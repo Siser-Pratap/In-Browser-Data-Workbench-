@@ -62,3 +62,40 @@ def test_rejects_unparseable_sql():
 
 def test_table_matching_is_case_insensitive():
     assert validate_sql("SELECT * FROM SALES", TABLES).ok
+
+
+# -- allow_ctas (Phase 2 cleaning proposals) ----------------------------------
+
+
+def test_ctas_rejected_by_default():
+    sql = "CREATE TABLE sales_cleaned AS SELECT * FROM sales WHERE amount > 0"
+    assert not validate_sql(sql, TABLES).ok
+
+
+def test_ctas_accepted_when_allowed():
+    sql = "CREATE TABLE sales_cleaned AS SELECT * FROM sales WHERE amount > 0"
+    assert validate_sql(sql, TABLES, allow_ctas=True).ok
+
+
+def test_ctas_cannot_overwrite_existing_table():
+    sql = "CREATE OR REPLACE TABLE sales AS SELECT * FROM sales WHERE amount > 0"
+    result = validate_sql(sql, TABLES, allow_ctas=True)
+    assert not result.ok
+    assert "overwrite" in result.error
+
+
+def test_ctas_inner_query_tables_are_checked():
+    sql = "CREATE TABLE cleaned AS SELECT * FROM users"
+    result = validate_sql(sql, TABLES, allow_ctas=True)
+    assert not result.ok
+    assert "users" in result.error
+
+
+def test_plain_create_table_rejected_even_when_ctas_allowed():
+    result = validate_sql("CREATE TABLE t (a INTEGER)", TABLES, allow_ctas=True)
+    assert not result.ok
+
+
+def test_dml_still_rejected_when_ctas_allowed():
+    for sql in ["DELETE FROM sales", "INSERT INTO sales VALUES (1)", "DROP TABLE sales"]:
+        assert not validate_sql(sql, TABLES, allow_ctas=True).ok, sql

@@ -7,7 +7,14 @@ from fastapi.responses import StreamingResponse
 
 from ..core.config import Settings
 from .budget import BudgetExceededError
-from .schemas import SqlExplainRequest, SqlFixRequest, SqlGenerateRequest
+from .schemas import (
+    ChartSuggestRequest,
+    CleanRequest,
+    InsightsRequest,
+    SqlExplainRequest,
+    SqlFixRequest,
+    SqlGenerateRequest,
+)
 from .service import AIService
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -86,3 +93,47 @@ async def explain_sql(
     """Explain a SQL query in plain English (SSE)."""
     _check_budget(service, settings, user_id)
     return _stream(service.stream_explain(body, user_id))
+
+
+@router.post("/clean")
+async def suggest_cleaning(
+    body: CleanRequest,
+    service: Service,
+    settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: UserId = "anonymous",
+) -> StreamingResponse:
+    """Profile document in -> validated cleaning suggestions out (SSE).
+
+    Each suggestion's `sql` materializes a NEW table (CREATE TABLE ... AS);
+    the original data is never mutated. Applying is always user-initiated.
+    """
+    _check_budget(service, settings, user_id)
+    return _stream(service.stream_clean(body, user_id))
+
+
+@router.post("/insights")
+async def suggest_insights(
+    body: InsightsRequest,
+    service: Service,
+    settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: UserId = "anonymous",
+) -> StreamingResponse:
+    """Profile document in -> ranked insights out (SSE).
+
+    Every insight carries `verification_sql`; the client executes it locally
+    and only displays insights whose numbers check out.
+    """
+    _check_budget(service, settings, user_id)
+    return _stream(service.stream_insights(body, user_id))
+
+
+@router.post("/charts/suggest")
+async def suggest_charts(
+    body: ChartSuggestRequest,
+    service: Service,
+    settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: UserId = "anonymous",
+) -> StreamingResponse:
+    """Profile document (+ optional question) -> 2-4 chart specs out (SSE)."""
+    _check_budget(service, settings, user_id)
+    return _stream(service.stream_charts(body, user_id))

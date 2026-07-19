@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     ai_model: str = "claude-opus-4-8"
     ai_effort: str = "medium"
     ai_max_tokens: int = 2048
+    # Phase 2 structured endpoints (clean/insights/charts) return larger JSON.
+    ai_structured_max_tokens: int = 8192
     ai_daily_token_budget: int = 200_000
 
     # Schema context is capped before it reaches the prompt; see ai/serializer.py
