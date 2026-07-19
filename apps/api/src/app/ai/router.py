@@ -7,8 +7,14 @@ from fastapi.responses import StreamingResponse
 
 from ..core.config import Settings
 from .budget import BudgetExceededError
+from .chat_service import ChatService
+from .chat_session import NotAwaitingToolsError, SessionNotFoundError
 from .schemas import (
     ChartSuggestRequest,
+    ChatCreateRequest,
+    ChatCreateResponse,
+    ChatMessageRequest,
+    ChatToolResultRequest,
     CleanRequest,
     InsightsRequest,
     SqlExplainRequest,
@@ -24,6 +30,10 @@ def get_service(request: Request) -> AIService:
     return request.app.state.ai_service
 
 
+def get_chat_service(request: Request) -> ChatService:
+    return request.app.state.chat_service
+
+
 def get_app_settings(request: Request) -> Settings:
     return request.app.state.settings
 
@@ -32,6 +42,7 @@ def get_app_settings(request: Request) -> Settings:
 # X-User-Id header the frontend sends, falling back to a shared anonymous bucket.
 UserId = Annotated[str, Header(alias="X-User-Id")]
 Service = Annotated[AIService, Depends(get_service)]
+Chat = Annotated[ChatService, Depends(get_chat_service)]
 
 
 def _sse(events: AsyncIterator[dict]) -> AsyncIterator[str]:
@@ -137,3 +148,83 @@ async def suggest_charts(
     """Profile document (+ optional question) -> 2-4 chart specs out (SSE)."""
     _check_budget(service, settings, user_id)
     return _stream(service.stream_charts(body, user_id))
+
+
+# -- Phase 3: conversational analyst ------------------------------------------
+
+
+def _require_configured(settings: Settings) -> None:
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="AI is not configured on this server.")
+
+
+@router.post("/chat", response_model=ChatCreateResponse)
+async def create_chat(
+    body: ChatCreateRequest,
+    chat: Chat,
+    settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: UserId = "anonymous",
+) -> ChatCreateResponse:
+    """Start an analyst chat session bound to the current dataset schemas."""
+    _require_configured(settings)
+    session_id, starters = chat.create_session(body, user_id)
+    return ChatCreateResponse(session_id=session_id, starter_prompts=starters)
+
+
+@router.post("/chat/{session_id}/message")
+async def chat_message(
+    session_id: str,
+    body: ChatMessageRequest,
+    chat: Chat,
+    settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: UserId = "anonymous",
+) -> StreamingResponse:
+    """Send a user message; stream assistant text, tool calls, or completion (SSE).
+
+    A turn that emits `tool_call` events ends with `awaiting_tools`: the browser
+    executes the tools and POSTs the results to `/chat/{session_id}/tool-result`
+    to resume.
+    """
+    _require_configured(settings)
+    try:
+        chat.budget.check(user_id)
+    except BudgetExceededError as e:
+        raise HTTPException(status_code=429, detail=str(e)) from e
+    try:
+        chat.sessions.get(session_id, user_id)
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Chat session not found.") from e
+    return _stream(chat.send_message(session_id, body.content, user_id))
+
+
+@router.post("/chat/{session_id}/tool-result")
+async def chat_tool_result(
+    session_id: str,
+    body: ChatToolResultRequest,
+    chat: Chat,
+    settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: UserId = "anonymous",
+) -> StreamingResponse:
+    """Return browser tool results to resume a paused turn (SSE)."""
+    _require_configured(settings)
+    try:
+        chat.budget.check(user_id)
+    except BudgetExceededError as e:
+        raise HTTPException(status_code=429, detail=str(e)) from e
+    try:
+        chat.sessions.get(session_id, user_id)
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Chat session not found.") from e
+
+    async def resume():
+        try:
+            async for event in chat.submit_tool_results(session_id, body.results, user_id):
+                yield event
+        except NotAwaitingToolsError:
+            yield {
+                "type": "error",
+                "code": "not_awaiting_tools",
+                "message": "This session is not waiting for these tool results.",
+            }
+
+    return _stream(resume())

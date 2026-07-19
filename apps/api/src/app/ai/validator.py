@@ -76,3 +76,20 @@ def validate_sql(
             return ValidationResult(ok=False, error=f"Unknown table: {table.name}")
 
     return ValidationResult(ok=True)
+
+
+def created_table_name(sql: str) -> str | None:
+    """The target table of a `CREATE TABLE ... AS SELECT`, else None.
+
+    Used to register a materialized table so later queries in the same session
+    validate against it.
+    """
+    try:
+        statement = sqlglot.parse_one(sql, read="duckdb")
+    except sqlglot.errors.ParseError:
+        return None
+    if not isinstance(statement, exp.Create) or (statement.kind or "").upper() != "TABLE":
+        return None
+    target = statement.this
+    table = target if isinstance(target, exp.Table) else target.find(exp.Table)
+    return table.name if table is not None else None

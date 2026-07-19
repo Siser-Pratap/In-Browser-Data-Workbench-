@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     # Schema context is capped before it reaches the prompt; see ai/serializer.py
     ai_schema_context_max_chars: int = 24_000
 
+    # Phase 3 conversational analyst
+    ai_chat_max_tokens: int = 4096
+    ai_chat_max_turns: int = 40
+    ai_chat_max_tool_calls_per_turn: int = 15
+    ai_chat_session_token_budget: int = 150_000
+    ai_chat_session_ttl_seconds: int = 3600
+    ai_chat_tool_result_max_chars: int = 20_000
+
     cors_origins: str = "http://localhost:3000"
 
     @property

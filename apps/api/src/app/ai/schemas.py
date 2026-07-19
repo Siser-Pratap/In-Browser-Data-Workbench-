@@ -110,3 +110,31 @@ class ChartSuggestResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     charts: list[SuggestedChart]
+
+
+# -- Phase 3: conversational analyst ------------------------------------------
+
+
+class ChatCreateRequest(BaseModel):
+    tables: list[TableSchema] = Field(min_length=1)
+    title: str | None = Field(default=None, max_length=200)
+
+
+class ChatCreateResponse(BaseModel):
+    session_id: str
+    starter_prompts: list[str]
+
+
+class ChatMessageRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=8000)
+
+
+class ClientToolResult(BaseModel):
+    tool_use_id: str
+    # JSON-serializable payload the browser produced (rows, profile, ack, ...).
+    content: Any
+    is_error: bool = False
+
+
+class ChatToolResultRequest(BaseModel):
+    results: list[ClientToolResult] = Field(min_length=1)

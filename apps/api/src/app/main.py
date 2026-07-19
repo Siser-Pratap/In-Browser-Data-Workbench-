@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .ai.chat_service import ChatService
 from .ai.router import router as ai_router
 from .ai.service import AIService
 from .core.config import Settings, get_settings
@@ -18,6 +19,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.ai_service = AIService(settings)
+    # Chat shares the daily token budget with the other AI endpoints.
+    app.state.chat_service = ChatService(settings, app.state.ai_service.budget)
 
     app.add_middleware(
         CORSMiddleware,
