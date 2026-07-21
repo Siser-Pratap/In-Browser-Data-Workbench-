@@ -22,10 +22,16 @@ class FakeS3:
 
     def __init__(self) -> None:
         self.objects: dict[str, dict] = {}
+        self.bodies: dict[str, bytes] = {}
         self.deleted: list[str] = []
 
     def generate_presigned_url(self, operation, Params, ExpiresIn):  # noqa: N803
         return f"https://fake-s3.test/{Params['Key']}?op={operation}&exp={ExpiresIn}"
+
+    def put_object(self, Bucket, Key, Body, **kwargs):  # noqa: N803
+        self.bodies[Key] = Body
+        self.objects[Key] = {"ContentLength": len(Body), "ETag": '"server-generated"'}
+        return {"ETag": '"server-generated"'}
 
     def head_object(self, Bucket, Key):  # noqa: N803
         if Key not in self.objects:

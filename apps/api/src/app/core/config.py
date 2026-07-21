@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     storage_quota_bytes: int = 1024**3  # 1 GB per user
     storage_max_file_bytes: int = 2 * 1024**3  # 2 GB per file
 
+    # -- Jobs & server-side compute (Phase 3) --------------------------------
+    # Empty => jobs run in-process (dev/test). Set it in production so the ARQ
+    # worker pool picks work up instead of the API process.
+    redis_url: str = ""
+    compute_memory_limit: str = "2GB"
+    compute_threads: int = 2
+    compute_timeout_seconds: int = 60
+    compute_max_rows: int = 1_000_000
+    compute_max_concurrent_per_user: int = 2
+
     # -- Platform ------------------------------------------------------------
     cors_origins: str = "http://localhost:3000"
     frontend_base_url: str = "http://localhost:3000"

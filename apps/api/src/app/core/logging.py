@@ -17,6 +17,10 @@ from starlette.requests import Request
 request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "request_id", default=None
 )
+# Set while a worker runs a job, so worker log lines carry the same handle the
+# API returned to the client. A job records the request id that created it, so
+# the chain reads: X-Request-ID -> job.params.request_id -> job_id.
+job_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("job_id", default=None)
 
 _RESERVED = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
@@ -29,6 +33,9 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "request_id": request_id_var.get(),
         }
+        job_id = job_id_var.get()
+        if job_id:
+            payload["job_id"] = job_id
         for key, value in record.__dict__.items():
             if key not in _RESERVED and key not in payload:
                 payload[key] = value

@@ -2,11 +2,12 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends, Header, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..db.models import User
 from ..services.auth_service import AuthService
 from ..services.errors import AccountInactive, InvalidToken
+from ..services.job_service import JobService
 from ..services.storage_service import StorageService
 from ..services.workspace_service import WorkspaceService
 from .config import Settings
@@ -102,6 +103,27 @@ async def optional_user(
 
 
 OptionalUser = Annotated[User | None, Depends(optional_user)]
+
+
+def get_sessionmaker(request: Request) -> async_sessionmaker:
+    """The session factory itself, for handlers that outlive one request-scoped
+    session (the SSE stream opens a short session per poll)."""
+    return request.app.state.db.sessionmaker
+
+
+SessionMaker = Annotated[async_sessionmaker, Depends(get_sessionmaker)]
+
+
+def get_job_service(request: Request) -> JobService:
+    return request.app.state.job_service
+
+
+def get_job_queue(request: Request):
+    return request.app.state.job_queue
+
+
+Jobs = Annotated[JobService, Depends(get_job_service)]
+Queue = Annotated[object, Depends(get_job_queue)]
 
 
 def get_workspace_service(request: Request) -> WorkspaceService:

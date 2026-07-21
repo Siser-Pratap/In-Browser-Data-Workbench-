@@ -5,9 +5,14 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 
+from ..compute.engine import ComputeError, QueryTimeout, SQLRejected
 from ..services.errors import AuthError
 from ..services.permissions import PermissionDenied
 from .logging import request_id_var
+
+# Compute failures are the user's fault (bad SQL) or their query's fault
+# (too slow) — never a 500.
+_COMPUTE_STATUS = {SQLRejected: 400, QueryTimeout: 504}
 
 _MEDIA_TYPE = "application/problem+json"
 
@@ -33,6 +38,11 @@ def install_problem_handlers(app: FastAPI) -> None:
     @app.exception_handler(PermissionDenied)
     async def _permission(_: Request, exc: PermissionDenied) -> JSONResponse:
         return _problem(exc.status_code, exc.code, exc.message, code=exc.code)
+
+    @app.exception_handler(ComputeError)
+    async def _compute(_: Request, exc: ComputeError) -> JSONResponse:
+        status = _COMPUTE_STATUS.get(type(exc), 422)
+        return _problem(status, exc.code, exc.message, code=exc.code)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:

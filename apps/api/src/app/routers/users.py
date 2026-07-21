@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from ..core.deps import Auth, CurrentUser, DbSession
+from ..core.deps import Auth, CurrentUser, DbSession, Storage
 from ..db.models import User
 from ..schemas.auth import MessageResponse, UpdateUserRequest, UserResponse
 
@@ -34,6 +34,8 @@ async def update_me(
 
 
 @router.delete("/me", response_model=MessageResponse, operation_id="deleteCurrentUser")
-async def delete_me(user: CurrentUser, db: DbSession, auth: Auth) -> MessageResponse:
-    await auth.delete_user(db, user)
+async def delete_me(
+    user: CurrentUser, db: DbSession, auth: Auth, storage: Storage
+) -> MessageResponse:
+    await auth.delete_user(db, user, storage=storage)
     return MessageResponse(message="Your account and data have been deleted.")

@@ -21,7 +21,7 @@ from ..core.security import (
     verify_password,
     verify_signed_token,
 )
-from ..db.models import OAuthAccount, RefreshToken, User
+from ..db.models import Dataset, OAuthAccount, RefreshToken, User, Workspace
 from .email_service import EmailService
 from .errors import (
     AccountInactive,
@@ -192,10 +192,35 @@ class AuthService:
 
     # -- account deletion ----------------------------------------------------
 
-    async def delete_user(self, db: AsyncSession, user: User) -> None:
-        """Real deletion: cascade the user's tokens and OAuth links, then the row."""
+    async def delete_user(self, db: AsyncSession, user: User, storage=None) -> None:
+        """Real deletion: tokens, OAuth links, workspaces, stored files, then the row.
+
+        The uploaded objects go first and explicitly. Relying on the FK cascade
+        would drop the rows holding the storage keys and strand the files in the
+        bucket — and "deleting your account deletes your data" is a promise we
+        make to users, not a side effect we hope the database performs.
+        """
+        workspaces = list(
+            (
+                await db.execute(select(Workspace).where(Workspace.owner_id == user.id))
+            ).scalars()
+        )
+        if storage is not None and workspaces:
+            keys = (
+                await db.execute(
+                    select(Dataset.storage_key).where(
+                        Dataset.workspace_id.in_([w.id for w in workspaces]),
+                        Dataset.storage_key.is_not(None),
+                    )
+                )
+            ).scalars()
+            for key in keys:
+                storage.delete(key)
+
         await db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id))
         await db.execute(delete(OAuthAccount).where(OAuthAccount.user_id == user.id))
+        for workspace in workspaces:
+            await db.delete(workspace)
         await db.delete(user)
         await db.commit()
 

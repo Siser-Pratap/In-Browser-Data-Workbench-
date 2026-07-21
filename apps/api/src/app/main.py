@@ -9,22 +9,28 @@ from .ai.router import router as ai_router
 from .ai.service import AIService
 from .core.config import Settings, get_settings
 from .core.logging import RequestContextMiddleware, configure_logging
+from .core.metrics import MetricsMiddleware
 from .core.problem import install_problem_handlers
 from .core.ratelimit import RateLimiter
 from .db.base import Base
 from .db.session import create_database
 from .routers.auth import router as auth_router
+from .routers.compute import router as compute_router
 from .routers.datasets import router as datasets_router
 from .routers.health import router as health_router
+from .routers.jobs import router as jobs_router
 from .routers.shared import router as shared_router
 from .routers.users import router as users_router
 from .routers.workspace_children import router as workspace_children_router
 from .routers.workspaces import router as workspaces_router
 from .services.auth_service import AuthService
 from .services.email_service import EmailService
+from .services.job_service import JobService
 from .services.oauth_service import OAuthService, configured_providers
 from .services.storage_service import StorageService
 from .services.workspace_service import WorkspaceService
+from .workers.queue import create_queue
+from .workers.worker import build_deps
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -44,7 +50,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.db_auto_create:
             async with database.engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+        # Built here, not at module scope: connecting to Redis needs a running
+        # loop, and falling back to the inline queue needs the sessionmaker.
+        app.state.job_queue = await create_queue(
+            settings.redis_url,
+            database.sessionmaker,
+            build_deps(
+                settings,
+                storage=app.state.storage_service,
+                jobs=app.state.job_service,
+            ),
+        )
         yield
+        await app.state.job_queue.close()
         await database.dispose()
 
     app = FastAPI(
@@ -69,6 +87,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         share_base_url=settings.frontend_base_url,
         storage_quota_bytes=settings.storage_quota_bytes,
     )
+    app.state.job_service = JobService(
+        max_concurrent_per_user=settings.compute_max_concurrent_per_user
+    )
     app.state.storage_service = StorageService(
         bucket=settings.s3_bucket,
         endpoint_url=settings.s3_endpoint_url,
@@ -80,6 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     install_problem_handlers(app)
+    app.add_middleware(MetricsMiddleware)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -96,6 +118,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(workspace_children_router, prefix="/api/v1")
     app.include_router(datasets_router, prefix="/api/v1")
     app.include_router(shared_router, prefix="/api/v1")
+    app.include_router(compute_router, prefix="/api/v1")
+    app.include_router(jobs_router, prefix="/api/v1")
     app.include_router(ai_router, prefix="/api/v1")
 
     if providers:

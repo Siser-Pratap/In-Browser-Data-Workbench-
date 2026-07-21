@@ -115,6 +115,22 @@ class StorageService:
             ExpiresIn=ttl_seconds or self.presign_ttl_seconds,
         )
 
+    def s3_url(self, key: str) -> str:
+        """`s3://bucket/key` — what DuckDB's httpfs reads."""
+        return f"s3://{self.bucket}/{key}"
+
+    def put_bytes(self, key: str, data: bytes, content_type: str) -> str:
+        """Upload from the server. Only used for artifacts we generate
+        (compute results, exports) — user data never round-trips through here."""
+        self._s3().put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            ServerSideEncryption="AES256",
+        )
+        return key
+
     def head(self, key: str) -> dict[str, Any]:
         """Size + ETag of an uploaded object, used to verify upload-complete."""
         try:

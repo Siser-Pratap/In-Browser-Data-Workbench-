@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Request
 from sqlalchemy import text
+from starlette.responses import Response
+
+from ..core import metrics
 
 router = APIRouter(tags=["health"])
 
@@ -23,3 +26,20 @@ async def readyz(request: Request) -> dict:
         checks["database"] = "error"
         ready = False
     return {"status": "ready" if ready else "not_ready", "checks": checks}
+
+
+@router.get("/metrics", operation_id="metrics", include_in_schema=False)
+async def prometheus_metrics(request: Request) -> Response:
+    """Prometheus scrape endpoint.
+
+    Queue depth is read live rather than tracked incrementally — an API process
+    that restarts would otherwise report a counter that never matches reality.
+    """
+    try:
+        async with request.app.state.db.sessionmaker() as session:
+            depth = await request.app.state.job_service.queue_depth(session)
+        for status in ("queued", "running"):
+            metrics.JOB_QUEUE_DEPTH.labels(status=status).set(depth.get(status, 0))
+    except Exception:  # noqa: BLE001 — a scrape must never fail the endpoint
+        pass
+    return metrics.render()
