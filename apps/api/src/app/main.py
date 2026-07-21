@@ -14,11 +14,17 @@ from .core.ratelimit import RateLimiter
 from .db.base import Base
 from .db.session import create_database
 from .routers.auth import router as auth_router
+from .routers.datasets import router as datasets_router
 from .routers.health import router as health_router
+from .routers.shared import router as shared_router
 from .routers.users import router as users_router
+from .routers.workspace_children import router as workspace_children_router
+from .routers.workspaces import router as workspaces_router
 from .services.auth_service import AuthService
 from .services.email_service import EmailService
 from .services.oauth_service import OAuthService, configured_providers
+from .services.storage_service import StorageService
+from .services.workspace_service import WorkspaceService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -59,6 +65,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.oauth_service = OAuthService()
     app.state.ai_service = AIService(settings)
     app.state.chat_service = ChatService(settings, app.state.ai_service.budget)
+    app.state.workspace_service = WorkspaceService(
+        share_base_url=settings.frontend_base_url,
+        storage_quota_bytes=settings.storage_quota_bytes,
+    )
+    app.state.storage_service = StorageService(
+        bucket=settings.s3_bucket,
+        endpoint_url=settings.s3_endpoint_url,
+        region=settings.s3_region,
+        access_key=settings.s3_access_key,
+        secret_key=settings.s3_secret_key,
+        presign_ttl_seconds=settings.s3_presign_ttl_seconds,
+        max_file_bytes=settings.storage_max_file_bytes,
+    )
 
     install_problem_handlers(app)
     app.add_middleware(RequestContextMiddleware)
@@ -73,6 +92,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(users_router, prefix="/api/v1")
+    app.include_router(workspaces_router, prefix="/api/v1")
+    app.include_router(workspace_children_router, prefix="/api/v1")
+    app.include_router(datasets_router, prefix="/api/v1")
+    app.include_router(shared_router, prefix="/api/v1")
     app.include_router(ai_router, prefix="/api/v1")
 
     if providers:

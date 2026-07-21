@@ -6,6 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 
 from ..services.errors import AuthError
+from ..services.permissions import PermissionDenied
 from .logging import request_id_var
 
 _MEDIA_TYPE = "application/problem+json"
@@ -27,6 +28,10 @@ def _problem(status: int, title: str, detail: str, code: str | None = None) -> J
 def install_problem_handlers(app: FastAPI) -> None:
     @app.exception_handler(AuthError)
     async def _auth(_: Request, exc: AuthError) -> JSONResponse:
+        return _problem(exc.status_code, exc.code, exc.message, code=exc.code)
+
+    @app.exception_handler(PermissionDenied)
+    async def _permission(_: Request, exc: PermissionDenied) -> JSONResponse:
         return _problem(exc.status_code, exc.code, exc.message, code=exc.code)
 
     @app.exception_handler(StarletteHTTPException)
