@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.main import create_app
 from app.services.storage_service import InvalidUpload, StorageService
 
+from .conftest import database_url
 from .test_workspaces import SNAPSHOT, auth, create_workspace, register  # noqa: F401
 
 
@@ -50,7 +51,7 @@ class FakeS3:
 def app_settings() -> Settings:
     return Settings(
         anthropic_api_key="test-key",
-        database_url="sqlite+aiosqlite:///:memory:",
+        database_url=database_url(),
         db_auto_create=True,
         cookie_secure=False,
         jwt_secret="test-secret",

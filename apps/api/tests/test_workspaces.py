@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.main import create_app
 
+from .conftest import database_url
+
 
 @pytest.fixture
 def app_settings() -> Settings:
@@ -19,7 +21,7 @@ def app_settings() -> Settings:
         anthropic_api_key="test-key",
         # A file-backed temp DB would be needed for multiple engines; one
         # in-memory database is shared by every session here.
-        database_url="sqlite+aiosqlite:///:memory:",
+        database_url=database_url(),
         db_auto_create=True,
         cookie_secure=False,
         jwt_secret="test-secret",
@@ -182,6 +184,85 @@ def test_snapshot_deletes_rows_the_client_dropped(client):
     assert body["queries"] == []
     assert body["charts"] == []
     assert len(body["datasets"]) == 1
+
+
+def test_charts_are_written_after_the_queries_they_reference(client):
+    """Regression: the snapshot save INSERTed charts before queries.
+
+    `Chart.query_id` is a bare FK column with no `relationship()`, so the unit
+    of work has no idea charts depend on queries. SQLite with foreign keys off
+    accepted it; PostgreSQL rejected every save containing a chart. The test
+    database now enforces foreign keys, so this fails loudly if it regresses.
+    """
+    token = register(client)
+    workspace = create_workspace(client, token)
+    many_charts = {
+        **SNAPSHOT,
+        "queries": [
+            {
+                "id": f"55555555-0000-4000-8000-{i:012d}",
+                "name": f"q{i}",
+                "sql": "SELECT 1",
+                "position": i,
+            }
+            for i in range(10)
+        ],
+        "charts": [
+            {
+                "id": f"66666666-0000-4000-8000-{i:012d}",
+                "query_id": f"55555555-0000-4000-8000-{i:012d}",
+                "spec": {"version": 1, "type": "line"},
+            }
+            for i in range(10)
+        ],
+    }
+    saved = client.put(
+        f"/api/v1/workspaces/{workspace['id']}/snapshot",
+        json=many_charts,
+        headers=auth(token),
+    )
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert len(body["charts"]) == 10
+    assert all(c["query_id"] is not None for c in body["charts"])
+
+
+def test_reusing_another_workspaces_id_is_a_409_not_a_500(client):
+    """Child ids are client-supplied and globally unique keys.
+
+    Saving a document whose ids already live in another workspace — e.g. one
+    copied from elsewhere — used to surface as an unhandled IntegrityError and
+    a 500. It's bad input, so it has to read as one.
+    """
+    token = register(client)
+    first = create_workspace(client, token, name="First")
+    second = create_workspace(client, token, name="Second")
+
+    body = {
+        "queries": [
+            {
+                "id": "77777777-0000-4000-8000-000000000001",
+                "name": "q",
+                "sql": "SELECT 1",
+                "position": 0,
+            }
+        ]
+    }
+    assert client.put(
+        f"/api/v1/workspaces/{first['id']}/snapshot", json=body, headers=auth(token)
+    ).status_code == 200
+
+    clash = client.put(
+        f"/api/v1/workspaces/{second['id']}/snapshot", json=body, headers=auth(token)
+    )
+    assert clash.status_code == 409
+    assert clash.json()["code"] == "id_conflict"
+
+    # The failed save left nothing behind.
+    after = client.get(
+        f"/api/v1/workspaces/{second['id']}/snapshot", headers=auth(token)
+    ).json()
+    assert after["queries"] == []
 
 
 def test_snapshot_conflict_returns_409_with_the_server_version(client):
@@ -389,6 +470,22 @@ def test_share_events_are_logged(client):
 
     async def actions():
         from app.db.models import ActivityLog
+        from app.db.session import create_database
+
+        from .conftest import on_postgres
+
+        # `asyncio.run` opens a fresh event loop, and asyncpg pools are bound to
+        # the loop that made them — so on PostgreSQL this needs its own engine.
+        # SQLite's in-memory database only exists inside the app's engine, so
+        # there it must reuse that one.
+        if on_postgres():
+            database = create_database(database_url())
+            try:
+                async with database.sessionmaker() as db:
+                    rows = (await db.execute(select(ActivityLog))).scalars()
+                    return [r.action for r in rows]
+            finally:
+                await database.dispose()
 
         async with client.app.state.db.sessionmaker() as db:
             rows = (await db.execute(select(ActivityLog))).scalars()

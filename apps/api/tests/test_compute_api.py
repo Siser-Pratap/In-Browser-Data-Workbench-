@@ -15,6 +15,7 @@ from app.main import create_app
 from app.workers.runner import execute_job
 from app.workers.worker import build_deps
 
+from .conftest import database_url
 from .test_storage import FakeS3
 from .test_workspaces import auth, create_workspace, register
 
@@ -34,7 +35,7 @@ def orders_csv(tmp_path):
 def app_settings() -> Settings:
     return Settings(
         anthropic_api_key="test-key",
-        database_url="sqlite+aiosqlite:///:memory:",
+        database_url=database_url(),
         db_auto_create=True,
         cookie_secure=False,
         jwt_secret="test-secret",
@@ -98,11 +99,11 @@ def deps(client, app_settings):
     return deps
 
 
-async def run_pending(client, deps):
+async def run_pending(client, deps, sessionmaker):
     """Run whatever the request enqueued, on the test's own loop."""
     statuses = []
     for job_id in client.app.state.job_queue.enqueued:
-        statuses.append(await execute_job(client.app.state.db.sessionmaker, job_id, deps))
+        statuses.append(await execute_job(sessionmaker, job_id, deps))
     client.app.state.job_queue.enqueued.clear()
     return statuses
 
@@ -143,7 +144,7 @@ def submit(client, token, workspace_id, dataset_ids, sql):
 # -- the happy path -----------------------------------------------------------
 
 
-async def test_compute_query_end_to_end(client, uploaded, deps):
+async def test_compute_query_end_to_end(client, uploaded, deps, sessionmaker):
     token, workspace_id, dataset_id = uploaded
 
     accepted = submit(
@@ -154,7 +155,7 @@ async def test_compute_query_end_to_end(client, uploaded, deps):
     job_id = accepted.json()["job_id"]
     assert accepted.json()["status"] == "queued"
 
-    assert await run_pending(client, deps) == ["succeeded"]
+    assert await run_pending(client, deps, sessionmaker) == ["succeeded"]
 
     status = client.get(f"/api/v1/compute/queries/{job_id}", headers=auth(token)).json()
     assert status["status"] == "succeeded"
@@ -179,13 +180,13 @@ async def test_compute_query_end_to_end(client, uploaded, deps):
     assert table.num_rows == 2
 
 
-async def test_large_result_is_capped_and_flagged(client, uploaded, deps):
+async def test_large_result_is_capped_and_flagged(client, uploaded, deps, sessionmaker):
     token, workspace_id, dataset_id = uploaded
     job_id = submit(
         client, token, workspace_id, [dataset_id], "SELECT * FROM orders"
     ).json()["job_id"]
 
-    await run_pending(client, deps)
+    await run_pending(client, deps, sessionmaker)
     body = client.get(f"/api/v1/compute/queries/{job_id}/result", headers=auth(token)).json()
     assert body["row_count"] == 100  # max_rows
     assert body["truncated"] is True
@@ -254,7 +255,9 @@ def test_result_before_completion_is_refused(client, uploaded):
 # -- maintenance jobs ---------------------------------------------------------
 
 
-async def test_purge_removes_expired_workspaces_and_their_files(client, uploaded, deps, fake_s3):
+async def test_purge_removes_expired_workspaces_and_their_files(
+    client, uploaded, deps, fake_s3, sessionmaker
+):
     import datetime as dt
 
     from sqlalchemy import select
@@ -265,7 +268,6 @@ async def test_purge_removes_expired_workspaces_and_their_files(client, uploaded
     token, workspace_id, _ = uploaded
     client.delete(f"/api/v1/workspaces/{workspace_id}", headers=auth(token))
 
-    sessionmaker = client.app.state.db.sessionmaker
     async with sessionmaker() as db:
         workspace = (
             await db.execute(select(Workspace).where(Workspace.id == _uuid(workspace_id)))
@@ -289,7 +291,9 @@ async def test_purge_removes_expired_workspaces_and_their_files(client, uploaded
     assert fake_s3.deleted, "the uploaded object should have been removed"
 
 
-async def test_purge_leaves_workspaces_inside_the_retention_window(client, uploaded, deps):
+async def test_purge_leaves_workspaces_inside_the_retention_window(
+    client, uploaded, deps, sessionmaker
+):
     from sqlalchemy import select
 
     from app.db.models import Workspace
@@ -297,7 +301,6 @@ async def test_purge_leaves_workspaces_inside_the_retention_window(client, uploa
     token, workspace_id, _ = uploaded
     client.delete(f"/api/v1/workspaces/{workspace_id}", headers=auth(token))
 
-    sessionmaker = client.app.state.db.sessionmaker
     async with sessionmaker() as db:
         job = await deps.jobs.create(db, kind="purge_soft_deleted", max_attempts=1)
         job_id = job.id
@@ -309,7 +312,7 @@ async def test_purge_leaves_workspaces_inside_the_retention_window(client, uploa
         ).scalar_one_or_none() is not None
 
 
-async def test_orphaned_upload_references_are_cleaned(client, deps, fake_s3):
+async def test_orphaned_upload_references_are_cleaned(client, deps, fake_s3, sessionmaker):
     """A reserved key whose upload never completed shouldn't linger forever."""
     import datetime as dt
 
@@ -332,7 +335,6 @@ async def test_orphaned_upload_references_are_cleaned(client, deps, fake_s3):
     )
     # ...and the client vanishes without ever calling upload-complete.
 
-    sessionmaker = client.app.state.db.sessionmaker
     async with sessionmaker() as db:
         row = (
             await db.execute(select(Dataset).where(Dataset.id == _uuid(dataset["id"])))
@@ -353,7 +355,77 @@ async def test_orphaned_upload_references_are_cleaned(client, deps, fake_s3):
         assert row.storage_key is None
 
 
-async def test_account_deletion_purges_stored_files(client, uploaded, fake_s3):
+async def test_usage_rollup_summarises_yesterday(client, uploaded, deps, sessionmaker):
+    """Job rows are pruned after a week, so without a rollup the usage history
+    disappears with them."""
+    import datetime as dt
+
+    from sqlalchemy import select
+
+    from app.db.models import UsageDaily
+
+    token, workspace_id, dataset_id = uploaded
+    submit(client, token, workspace_id, [dataset_id], "SELECT * FROM orders")
+    await run_pending(client, deps, sessionmaker)
+
+    yesterday = (dt.datetime.now(dt.UTC) - dt.timedelta(days=1)).date()
+
+    async with sessionmaker() as db:
+        # Backdate the finished job into the window the rollup covers.
+        from app.db.models import Job
+
+        finished = (await db.execute(select(Job).where(Job.status == "succeeded"))).scalars()
+        for row in finished:
+            row.finished_at = dt.datetime.combine(yesterday, dt.time(12, 0), tzinfo=dt.UTC)
+        await db.commit()
+
+        job = await deps.jobs.create(db, kind="roll_up_usage", max_attempts=1)
+        job_id = job.id
+
+    assert await execute_job(sessionmaker, job_id, deps) == "succeeded"
+
+    async with sessionmaker() as db:
+        rows = list((await db.execute(select(UsageDaily))).scalars())
+        assert len(rows) == 1
+        usage = rows[0]
+        assert usage.day == yesterday
+        assert usage.compute_jobs == 1
+        assert usage.compute_rows == 100
+        assert usage.compute_result_bytes > 0
+        assert usage.storage_bytes == 4096  # the uploaded dataset
+
+
+async def test_usage_rollup_is_idempotent(client, uploaded, deps, sessionmaker):
+    """Re-running a day must overwrite, not double-count."""
+    import datetime as dt
+
+    from sqlalchemy import select
+
+    from app.db.models import Job, UsageDaily
+
+    token, workspace_id, dataset_id = uploaded
+    submit(client, token, workspace_id, [dataset_id], "SELECT * FROM orders")
+    await run_pending(client, deps, sessionmaker)
+
+    yesterday = (dt.datetime.now(dt.UTC) - dt.timedelta(days=1)).date()
+    async with sessionmaker() as db:
+        for row in (await db.execute(select(Job).where(Job.status == "succeeded"))).scalars():
+            row.finished_at = dt.datetime.combine(yesterday, dt.time(12, 0), tzinfo=dt.UTC)
+        await db.commit()
+
+    for _ in range(2):
+        async with sessionmaker() as db:
+            job = await deps.jobs.create(db, kind="roll_up_usage", max_attempts=1)
+            job_id = job.id
+        await execute_job(sessionmaker, job_id, deps)
+
+    async with sessionmaker() as db:
+        rows = list((await db.execute(select(UsageDaily))).scalars())
+        assert len(rows) == 1
+        assert rows[0].compute_jobs == 1
+
+
+async def test_account_deletion_purges_stored_files(client, uploaded, fake_s3, sessionmaker):
     """The data-retention promise: deleting an account removes the S3 objects,
     not just the rows that reference them."""
     token, _, _ = uploaded

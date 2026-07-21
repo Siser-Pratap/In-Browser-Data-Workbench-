@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from ..core.config import Settings
 from ..core.deps import OptionalUserId
+from ..core.ratelimit import rate_limit
 from .budget import BudgetExceededError
 from .chat_service import ChatService
 from .chat_session import NotAwaitingToolsError, SessionNotFoundError
@@ -24,7 +25,9 @@ from .schemas import (
 )
 from .service import AIService
 
-router = APIRouter(prefix="/ai", tags=["ai"])
+# The daily token budget caps spend; this caps request rate, which the
+# budget alone does not (a rejected or cached call costs no tokens).
+router = APIRouter(prefix="/ai", tags=["ai"], dependencies=[rate_limit("ai")])
 
 
 def get_service(request: Request) -> AIService:
@@ -71,7 +74,7 @@ def _stream(events: AsyncIterator[dict]) -> StreamingResponse:
     )
 
 
-@router.post("/sql")
+@router.post("/sql", operation_id="generateSql")
 async def generate_sql(
     body: SqlGenerateRequest,
     service: Service,
@@ -83,7 +86,7 @@ async def generate_sql(
     return _stream(service.stream_sql(body, user_id))
 
 
-@router.post("/sql/fix")
+@router.post("/sql/fix", operation_id="fixSql")
 async def fix_sql(
     body: SqlFixRequest,
     service: Service,
@@ -95,7 +98,7 @@ async def fix_sql(
     return _stream(service.stream_fix(body, user_id))
 
 
-@router.post("/sql/explain")
+@router.post("/sql/explain", operation_id="explainSql")
 async def explain_sql(
     body: SqlExplainRequest,
     service: Service,
@@ -107,7 +110,7 @@ async def explain_sql(
     return _stream(service.stream_explain(body, user_id))
 
 
-@router.post("/clean")
+@router.post("/clean", operation_id="proposeCleaning")
 async def suggest_cleaning(
     body: CleanRequest,
     service: Service,
@@ -123,7 +126,7 @@ async def suggest_cleaning(
     return _stream(service.stream_clean(body, user_id))
 
 
-@router.post("/insights")
+@router.post("/insights", operation_id="generateInsights")
 async def suggest_insights(
     body: InsightsRequest,
     service: Service,
@@ -139,7 +142,7 @@ async def suggest_insights(
     return _stream(service.stream_insights(body, user_id))
 
 
-@router.post("/charts/suggest")
+@router.post("/charts/suggest", operation_id="suggestCharts")
 async def suggest_charts(
     body: ChartSuggestRequest,
     service: Service,
@@ -159,7 +162,7 @@ def _require_configured(settings: Settings) -> None:
         raise HTTPException(status_code=503, detail="AI is not configured on this server.")
 
 
-@router.post("/chat", response_model=ChatCreateResponse)
+@router.post("/chat", response_model=ChatCreateResponse, operation_id="createChatSession")
 async def create_chat(
     body: ChatCreateRequest,
     chat: Chat,
@@ -172,7 +175,7 @@ async def create_chat(
     return ChatCreateResponse(session_id=session_id, starter_prompts=starters)
 
 
-@router.post("/chat/{session_id}/message")
+@router.post("/chat/{session_id}/message", operation_id="sendChatMessage")
 async def chat_message(
     session_id: str,
     body: ChatMessageRequest,
@@ -198,7 +201,7 @@ async def chat_message(
     return _stream(chat.send_message(session_id, body.content, user_id))
 
 
-@router.post("/chat/{session_id}/tool-result")
+@router.post("/chat/{session_id}/tool-result", operation_id="submitChatToolResult")
 async def chat_tool_result(
     session_id: str,
     body: ChatToolResultRequest,

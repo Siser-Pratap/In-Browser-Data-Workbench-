@@ -8,7 +8,16 @@ durable record the API reads for status, so job history survives a Redis flush.
 import datetime as dt
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base, TimestampMixin, UUIDMixin
@@ -49,3 +58,28 @@ class Job(UUIDMixin, TimestampMixin, Base):
     dead_lettered_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class UsageDaily(UUIDMixin, TimestampMixin, Base):
+    """One row per user per day: what they used, rolled up.
+
+    Derived data — it could be recomputed from `jobs` and `datasets` — but those
+    are pruned (jobs after a week), so without a rollup the history is gone.
+    Billing and capacity questions need the series to outlive its sources.
+    """
+
+    __tablename__ = "usage_daily"
+    __table_args__ = (UniqueConstraint("user_id", "day", name="uq_usage_user_day"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    day: Mapped[dt.date] = mapped_column(Date, index=True, nullable=False)
+
+    compute_jobs: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    compute_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    compute_rows: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    compute_result_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    jobs_failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Point-in-time, not a sum: how much was stored at the end of that day.
+    storage_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)

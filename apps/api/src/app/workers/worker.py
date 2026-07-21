@@ -86,7 +86,14 @@ async def shutdown(ctx: dict) -> None:
 
 
 async def run_job(ctx: dict, job_id: str) -> str:
-    return await execute_job(ctx["database"].sessionmaker, job_id, ctx["deps"])
+    deps: TaskDeps = ctx["deps"]
+    if deps.queue is None:
+        # ARQ hands the worker its own pool in ctx; wrapping it here is what
+        # lets a retryable failure put itself back on the queue.
+        from .queue import ArqQueue
+
+        deps.queue = ArqQueue(ctx["redis"])
+    return await execute_job(ctx["database"].sessionmaker, job_id, deps)
 
 
 async def _system_job(ctx: dict, kind: str) -> str:
@@ -107,6 +114,10 @@ async def cleanup_cron(ctx: dict) -> str:
     return await _system_job(ctx, "cleanup_orphaned_uploads")
 
 
+async def usage_rollup_cron(ctx: dict) -> str:
+    return await _system_job(ctx, "roll_up_usage")
+
+
 async def expire_jobs_cron(ctx: dict) -> str:
     return await _system_job(ctx, "expire_old_jobs")
 
@@ -117,6 +128,8 @@ class WorkerSettings:
         # Off-peak, staggered so three table scans don't land together.
         cron(purge_cron, hour=3, minute=0),
         cron(cleanup_cron, hour=3, minute=20),
+        # Must precede expire_jobs_cron, which prunes the rows it reads.
+        cron(usage_rollup_cron, hour=3, minute=30),
         cron(expire_jobs_cron, hour=3, minute=40),
     ]
     on_startup = startup

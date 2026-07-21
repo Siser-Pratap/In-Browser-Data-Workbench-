@@ -52,15 +52,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await conn.run_sync(Base.metadata.create_all)
         # Built here, not at module scope: connecting to Redis needs a running
         # loop, and falling back to the inline queue needs the sessionmaker.
-        app.state.job_queue = await create_queue(
-            settings.redis_url,
-            database.sessionmaker,
-            build_deps(
-                settings,
-                storage=app.state.storage_service,
-                jobs=app.state.job_service,
-            ),
+        deps = build_deps(
+            settings,
+            storage=app.state.storage_service,
+            jobs=app.state.job_service,
         )
+        app.state.job_queue = await create_queue(
+            settings.redis_url, database.sessionmaker, deps
+        )
+        # Closes the loop: the queue needs deps to construct, and the runner
+        # needs the queue to re-enqueue a retry.
+        deps.queue = app.state.job_queue
+        app.state.task_deps = deps
         yield
         await app.state.job_queue.close()
         await database.dispose()

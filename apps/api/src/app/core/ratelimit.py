@@ -14,8 +14,9 @@ from .config import Settings
 
 
 class RateLimiter:
-    def __init__(self) -> None:
+    def __init__(self, max_tracked_keys: int = 50_000) -> None:
         self._hits: dict[str, tuple[int, int]] = defaultdict(lambda: (0, 0))
+        self._max_tracked_keys = max_tracked_keys
 
     def check(self, key: str, limit: int, window_seconds: int = 60) -> None:
         window = int(time.time()) // window_seconds
@@ -24,6 +25,7 @@ class RateLimiter:
             count, current_window = 0, window
         count += 1
         self._hits[key] = (count, current_window)
+        self._evict_stale(window)
         if count > limit:
             retry_after = window_seconds - int(time.time()) % window_seconds
             raise HTTPException(
@@ -31,6 +33,20 @@ class RateLimiter:
                 detail="Too many requests. Slow down.",
                 headers={"Retry-After": str(retry_after)},
             )
+
+
+    def _evict_stale(self, window: int) -> None:
+        """Drop keys from closed windows once the map gets large.
+
+        Without this, one entry accumulates per distinct client IP and is never
+        released — an unbounded leak in a long-running process, and a trivial
+        one to amplify by spraying requests from many addresses. Entries from
+        past windows carry no information: their counts have already reset.
+        """
+        if len(self._hits) <= self._max_tracked_keys:
+            return
+        for key in [k for k, (_, w) in self._hits.items() if w != window]:
+            del self._hits[key]
 
 
 def _client_key(request: Request) -> str:

@@ -16,6 +16,7 @@ from app.workers import tasks as task_module
 from app.workers.runner import execute_job
 from app.workers.tasks import TaskDeps
 
+from .conftest import database_url
 from .test_storage import FakeS3
 from .test_workspaces import auth, register
 
@@ -24,7 +25,7 @@ from .test_workspaces import auth, register
 def app_settings() -> Settings:
     return Settings(
         anthropic_api_key="test-key",
-        database_url="sqlite+aiosqlite:///:memory:",
+        database_url=database_url(),
         db_auto_create=True,
         cookie_secure=False,
         jwt_secret="test-secret",
@@ -45,11 +46,6 @@ def client(app_settings, fake_s3):
     app.state.storage_service._client = fake_s3
     with TestClient(app) as c:
         yield c
-
-
-@pytest.fixture
-def sessionmaker(client):
-    return client.app.state.db.sessionmaker
 
 
 @pytest.fixture
@@ -136,6 +132,68 @@ async def test_failure_retries_then_dead_letters(client, sessionmaker, deps):
             assert dead.attempts == 3
     finally:
         task_module.TASKS.pop("test_flaky")
+
+
+async def test_a_retryable_failure_puts_itself_back_on_the_queue(client, sessionmaker, deps):
+    """Setting the row back to `queued` is not a retry.
+
+    Nothing polls that column, so without a new queue message the job would sit
+    in `queued` forever — never retried, never dead-lettered, and still counted
+    against the user's concurrency cap. This is the regression test for that.
+    """
+    enqueued: list[tuple[str, int]] = []
+
+    class RecordingQueue:
+        async def enqueue(self, job_id, *, delay_seconds: int = 0):
+            enqueued.append((str(job_id), delay_seconds))
+
+    deps.queue = RecordingQueue()
+    register(client)
+    user = await make_user(sessionmaker, "owner@example.com")
+
+    async def flaky(db, job, deps):
+        raise RuntimeError("s3 had a moment")
+
+    task_module.TASKS["test_requeue"] = flaky
+    try:
+        async with sessionmaker() as db:
+            job = await deps.jobs.create(db, kind="test_requeue", user=user, max_attempts=3)
+            job_id = job.id
+
+        assert await execute_job(sessionmaker, job_id, deps) == "queued"
+        assert enqueued == [(str(job_id), 5)]  # first retry, 5s backoff
+
+        assert await execute_job(sessionmaker, job_id, deps) == "queued"
+        assert enqueued[-1] == (str(job_id), 10)  # backoff doubles
+
+        # Attempts exhausted: dead-lettered, and *not* re-enqueued.
+        assert await execute_job(sessionmaker, job_id, deps) == "failed"
+        assert len(enqueued) == 2
+    finally:
+        task_module.TASKS.pop("test_requeue")
+
+
+async def test_a_retry_without_a_queue_is_logged_not_silent(client, sessionmaker, deps, caplog):
+    """The inline path always has a queue; a misconfiguration must be loud."""
+    import logging
+
+    deps.queue = None
+    register(client)
+    user = await make_user(sessionmaker, "owner@example.com")
+
+    async def flaky(db, job, deps):
+        raise RuntimeError("boom")
+
+    task_module.TASKS["test_no_queue"] = flaky
+    try:
+        async with sessionmaker() as db:
+            job = await deps.jobs.create(db, kind="test_no_queue", user=user, max_attempts=3)
+            job_id = job.id
+        with caplog.at_level(logging.ERROR, logger="app.jobs"):
+            await execute_job(sessionmaker, job_id, deps)
+        assert any("job.retry_dropped" in r.message for r in caplog.records)
+    finally:
+        task_module.TASKS.pop("test_no_queue")
 
 
 async def test_compute_errors_are_not_retried(client, sessionmaker, deps):

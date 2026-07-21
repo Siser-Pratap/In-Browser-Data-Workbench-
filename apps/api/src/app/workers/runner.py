@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ..core.logging import job_id_var, request_id_var
 from ..db.models.job import TERMINAL_STATUSES
+from ..services.job_service import backoff_seconds
 from .tasks import NON_RETRYABLE, TASKS, TaskDeps
 
 logger = logging.getLogger("app.jobs")
@@ -71,7 +72,33 @@ async def _execute(
                 "job.failed", extra={"job_id": str(job.id), "kind": job.kind}
             )
             updated = await deps.jobs.mark_failed(db, job, message, retryable=retryable)
+            if updated.status == "queued":
+                await _requeue(deps, job_id, updated.attempts)
             return updated.status
 
         updated = await deps.jobs.mark_succeeded(db, job, result)
         return updated.status
+
+
+async def _requeue(deps: TaskDeps, job_id: str | uuid.UUID, attempts: int) -> None:
+    """Push a retryable failure back onto the queue.
+
+    Setting the row back to `queued` is not enough: nothing polls that column,
+    so without a new queue message the job would sit there forever — never
+    retried, never dead-lettered, and still counted against the user's
+    concurrency cap.
+    """
+    delay = backoff_seconds(attempts)
+    if deps.queue is None:
+        logger.error(
+            "job.retry_dropped",
+            extra={"job_id": str(job_id), "attempts": attempts},
+        )
+        return
+    await deps.queue.enqueue(
+        job_id if isinstance(job_id, uuid.UUID) else uuid.UUID(str(job_id)),
+        delay_seconds=delay,
+    )
+    logger.info(
+        "job.requeued", extra={"job_id": str(job_id), "retry_in_seconds": delay}
+    )

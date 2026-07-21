@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from ..compute import sql_guard
 from ..compute.engine import SQLRejected
 from ..core.deps import CurrentUser, DbSession, Jobs, Queue, Storage, Workspaces
+from ..core.ratelimit import rate_limit
 from ..schemas.job import ComputeQueryRequest, ComputeResultResponse, JobAcceptedResponse
 from ..services.permissions import require
 from ..services.storage_service import InvalidUpload
@@ -18,12 +19,18 @@ from .jobs import to_job_response
 
 router = APIRouter(prefix="/compute", tags=["compute"])
 
+# Per-IP ceiling on top of the per-user concurrency cap: the cap limits work
+# in flight, this limits how fast someone can submit (including submissions
+# that get rejected and so never occupy a slot).
+_COMPUTE_LIMIT = rate_limit("compute")
+
 
 @router.post(
     "/queries",
     response_model=JobAcceptedResponse,
     status_code=202,
     operation_id="createComputeQuery",
+    dependencies=[_COMPUTE_LIMIT],
 )
 async def create_compute_query(
     body: ComputeQueryRequest,

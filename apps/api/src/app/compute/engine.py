@@ -20,10 +20,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
+
+# Imported at module scope on purpose. These are heavyweight C extensions, and
+# the query body below runs on a worker thread — letting a thread trigger their
+# *first* import segfaulted the interpreter, reproducibly, whenever a second
+# test imported them concurrently from the main thread. Import them once, here,
+# while we are still single-threaded.
+import duckdb
+import pyarrow as pa
 
 from . import sql_guard
 
@@ -130,10 +139,6 @@ def _bind(conn: Any, datasets: list[BoundDataset]) -> None:
 
 
 def _to_ipc(table: Any) -> bytes:
-    import io
-
-    import pyarrow as pa
-
     sink = io.BytesIO()
     with pa.ipc.new_stream(sink, table.schema) as writer:
         writer.write_table(table)
@@ -168,8 +173,6 @@ async def run_query(
     holder: dict[str, Any] = {}
 
     def _work() -> ComputeResult:
-        import duckdb
-
         conn = duckdb.connect(":memory:")
         holder["conn"] = conn
         try:

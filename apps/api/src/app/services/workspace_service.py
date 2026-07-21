@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import (
@@ -43,6 +44,19 @@ class VersionConflict(AuthError):
 class QuotaExceeded(AuthError):
     status_code = 413
     code = "quota_exceeded"
+
+
+class IdConflict(AuthError):
+    """A client-supplied id is already used by another workspace.
+
+    Child ids come from the client (the local-first frontend generates UUIDs)
+    and are global primary keys, so a duplicate is possible — most plausibly by
+    re-saving a workspace document that was copied from somewhere else. It's bad
+    input, not a server fault, so it must not surface as a 500.
+    """
+
+    status_code = 409
+    code = "id_conflict"
 
 
 def version_of(workspace: Workspace) -> str:
@@ -197,13 +211,27 @@ class WorkspaceService:
         if body.settings is not None:
             workspace.settings = body.settings
 
-        await self._sync_datasets(db, workspace, body.datasets)
-        query_ids = await self._sync_queries(db, workspace, body.queries)
-        await self._sync_charts(db, workspace, body.charts, query_ids)
-        await self._sync_dashboards(db, workspace, body.dashboards)
+        # The whole write is one unit: a duplicate id surfaces at the flush
+        # below just as readily as at the commit, so both live inside the guard.
+        try:
+            await self._sync_datasets(db, workspace, body.datasets)
+            query_ids = await self._sync_queries(db, workspace, body.queries)
+            # Flush before touching charts. `Chart.query_id` is a bare FK column
+            # with no `relationship()`, so SQLAlchemy's unit of work doesn't know
+            # charts depend on queries and will happily INSERT charts first —
+            # which SQLite tolerates and PostgreSQL rejects outright.
+            await db.flush()
+            await self._sync_charts(db, workspace, body.charts, query_ids)
+            await self._sync_dashboards(db, workspace, body.dashboards)
 
-        touch(workspace)
-        await db.commit()
+            touch(workspace)
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise IdConflict(
+                "One or more ids in this snapshot already belong to another "
+                "workspace; regenerate them and save again"
+            ) from exc
         await db.refresh(workspace)
         return await self.load_snapshot(db, workspace)
 
@@ -364,6 +392,11 @@ class WorkspaceService:
                     position=row.position,
                 )
             )
+        # The copied queries must exist before charts point at them — same
+        # reason as in `save_snapshot`: no `relationship()` links the two, so
+        # the unit of work won't order the inserts for us.
+        await db.flush()
+
         for row in snapshot["charts"]:
             db.add(
                 Chart(
