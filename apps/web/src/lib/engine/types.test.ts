@@ -41,6 +41,7 @@ describe('tableNameFromFilename', () => {
 });
 
 describe('kindForDuckDbType', () => {
+  // DuckDB's own spelling, as `DESCRIBE` reports it.
   it.each([
     ['BIGINT', 'number'],
     ['DECIMAL(10,2)', 'number'],
@@ -52,6 +53,41 @@ describe('kindForDuckDbType', () => {
     ['BLOB', 'other'],
   ])('maps %s to %s', (type, kind) => {
     expect(kindForDuckDbType(type)).toBe(kind);
+  });
+
+  // Arrow's spelling, which is what a *query result* carries. These differ from
+  // DuckDB's names, and treating a text column as `other` costs it its place as
+  // a chart category — so both vocabularies have to be understood.
+  it.each([
+    ['Utf8', 'string'],
+    ['LargeUtf8', 'string'],
+    ['Int64', 'number'],
+    ['Uint32', 'number'],
+    ['Float64', 'number'],
+    ['Decimal<18, 3>', 'number'],
+    ['Bool', 'boolean'],
+    ['Date32<DAY>', 'date'],
+    ['Timestamp<MICROSECOND>', 'date'],
+    ['Time64<NANOSECOND>', 'date'],
+    ['Binary', 'other'],
+  ])('maps the Arrow type %s to %s', (type, kind) => {
+    expect(kindForDuckDbType(type)).toBe(kind);
+  });
+
+  it('reads an enum through its dictionary values, not its integer indices', () => {
+    expect(kindForDuckDbType('Dictionary<Int8, Utf8>')).toBe('string');
+  });
+
+  it('does not mistake INTERVAL for a number because of the INT in its name', () => {
+    expect(kindForDuckDbType('INTERVAL')).toBe('date');
+  });
+
+  it('treats composites as other, whichever dialect names them', () => {
+    expect(kindForDuckDbType('STRUCT(a VARCHAR, b INTEGER)')).toBe('other');
+    expect(kindForDuckDbType('Struct<a: Utf8>')).toBe('other');
+    expect(kindForDuckDbType('List<Int64>')).toBe('other');
+    expect(kindForDuckDbType('MAP(VARCHAR, INTEGER)')).toBe('other');
+    expect(kindForDuckDbType('INTEGER[]')).toBe('other');
   });
 });
 

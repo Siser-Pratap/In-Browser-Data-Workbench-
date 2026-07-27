@@ -1,18 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { DataGrid } from '@/components/grid/DataGrid';
+import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { DropZone } from '@/components/ingest/DropZone';
 import { ImportDialog } from '@/components/ingest/ImportDialog';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { StatusBar } from '@/components/layout/StatusBar';
 import { TopBar } from '@/components/layout/TopBar';
+import { FirstRunTour } from '@/components/onboarding/FirstRunTour';
+import { SampleDataButton } from '@/components/onboarding/SampleDataButton';
+import { CommandPalette } from '@/components/palette/CommandPalette';
+import { useCommands } from '@/components/palette/useCommands';
+import { LazyDashboardsView, LazySqlWorkbench } from '@/components/workbench/lazy';
+import { EmptySqlState } from '@/components/workbench/SqlWorkbench';
 import type { ImportOptions } from '@/lib/engine/types';
+import { track } from '@/lib/telemetry/telemetry';
 import { formatCount } from '@/lib/utils/format';
+import { useCatalogStore } from '@/stores/catalog';
 import { useDatasetStore } from '@/stores/datasets';
+import { useHistoryStore } from '@/stores/history';
+import { useUiStore } from '@/stores/ui';
 
 export default function WorkbenchPage() {
   const datasets = useDatasetStore((state) => state.datasets);
@@ -23,11 +34,22 @@ export default function WorkbenchPage() {
   const restoreFromDisk = useDatasetStore((state) => state.restoreFromDisk);
   const importFile = useDatasetStore((state) => state.importFile);
 
+  const refreshCatalog = useCatalogStore((state) => state.refresh);
+  const loadHistory = useHistoryStore((state) => state.load);
+
+  const view = useUiStore((state) => state.view);
+  const setView = useUiStore((state) => state.setView);
+  const historyOpen = useUiStore((state) => state.historyOpen);
+  const toggleHistory = useUiStore((state) => state.toggleHistory);
+  const paletteOpen = useUiStore((state) => state.paletteOpen);
+  const setPaletteOpen = useUiStore((state) => state.setPaletteOpen);
+
   // Files waiting to be confirmed; the dialog handles them one at a time so
   // each gets its own table name.
   const [queue, setQueue] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
   const [stats, setStats] = useState<{ visibleRows: number; elapsedMs: number } | null>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Boot the engine first, unconditionally. `restoreFromDisk` returns early
@@ -40,10 +62,32 @@ export default function WorkbenchPage() {
         await restoreFromDisk();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to start the engine');
+      } finally {
+        await refreshCatalog();
       }
     }
     void start();
-  }, [restoreFromDisk, initEngine]);
+    void loadHistory();
+  }, [restoreFromDisk, initEngine, refreshCatalog, loadHistory]);
+
+  // Global shortcuts. Registered on the window rather than a container so they
+  // work regardless of what has focus — including Monaco, which swallows most
+  // keys inside the editor.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const meta = event.metaKey || event.ctrlKey;
+      if (meta && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        track('palette.open');
+        setPaletteOpen(true);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [setPaletteOpen]);
+
+  const onAddData = useCallback(() => filePicker.current?.click(), []);
+  const commands = useCommands({ onAddData });
 
   const pending = queue[0];
 
@@ -55,6 +99,7 @@ export default function WorkbenchPage() {
       toast.success(`Imported ${info.table}`, {
         description: `${formatCount(info.rowCount)} rows × ${info.columns.length} columns`,
       });
+      await refreshCatalog();
       setQueue((current) => current.slice(1));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Import failed');
@@ -62,6 +107,8 @@ export default function WorkbenchPage() {
       setImporting(false);
     }
   }
+
+  const hasData = datasets.length > 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -71,7 +118,19 @@ export default function WorkbenchPage() {
         <Sidebar />
 
         <main className="flex min-w-0 flex-1 flex-col">
-          {datasets.length === 0 ? (
+          {view === 'dashboards' ? (
+            <ErrorBoundary>
+              <LazyDashboardsView />
+            </ErrorBoundary>
+          ) : view === 'sql' ? (
+            hasData ? (
+              <ErrorBoundary>
+                <LazySqlWorkbench />
+              </ErrorBoundary>
+            ) : (
+              <EmptySqlState onAddData={onAddData} />
+            )
+          ) : !hasData ? (
             <div className="flex flex-1 items-center justify-center p-8">
               <div className="w-full max-w-lg">
                 {restoring ? (
@@ -81,6 +140,9 @@ export default function WorkbenchPage() {
                 ) : (
                   <>
                     <DropZone onFiles={(files) => setQueue((q) => [...q, ...files])} />
+                    <div className="mt-3 flex justify-center">
+                      <SampleDataButton />
+                    </div>
                     {status === 'error' && (
                       <p className="mt-3 text-center text-xs text-[var(--color-danger)]">
                         The query engine failed to start. Check that your browser supports
@@ -98,15 +160,38 @@ export default function WorkbenchPage() {
               </div>
               <div className="min-h-0 flex-1">
                 <ErrorBoundary>
-                  {activeTable && <DataGrid table={activeTable} onStats={setStats} />}
+                  {activeTable && (
+                    <DataGrid key={activeTable} table={activeTable} onStats={setStats} />
+                  )}
                 </ErrorBoundary>
               </div>
             </>
           )}
         </main>
+
+        {historyOpen && <HistoryPanel onClose={toggleHistory} />}
       </div>
 
       <StatusBar visibleRows={stats?.visibleRows} elapsedMs={stats?.elapsedMs} />
+
+      {/* Hidden picker so the palette and empty states can open a file dialog
+          without each rendering their own input. */}
+      <input
+        ref={filePicker}
+        type="file"
+        multiple
+        data-testid="file-picker"
+        accept=".csv,.tsv,.json,.parquet,.xlsx,.xls"
+        className="hidden"
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])];
+          if (files.length > 0) {
+            setQueue((q) => [...q, ...files]);
+            setView('data');
+          }
+          event.target.value = '';
+        }}
+      />
 
       {pending && (
         <ImportDialog
@@ -117,6 +202,12 @@ export default function WorkbenchPage() {
           onConfirm={(options) => void onConfirm(options)}
         />
       )}
+
+      {paletteOpen && (
+        <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
+      )}
+
+      <FirstRunTour />
     </div>
   );
 }

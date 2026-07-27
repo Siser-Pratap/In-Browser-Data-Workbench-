@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { getEngine, resetEngine } from '@/lib/engine/engine';
 import type { DatasetInfo, EngineStatus, ImportOptions } from '@/lib/engine/types';
 import * as opfs from '@/lib/files/opfs';
+import { track } from '@/lib/telemetry/telemetry';
 import { readSheetRows } from '@/lib/files/xlsx';
 
 /**
@@ -94,6 +95,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       ]);
     }
 
+    track('file.import');
     set((state) => ({
       datasets: [...state.datasets.filter((d) => d.table !== info.table), info],
       activeTable: info.table,

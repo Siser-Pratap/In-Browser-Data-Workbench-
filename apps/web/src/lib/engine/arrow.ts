@@ -1,7 +1,20 @@
-import { Type, type DataType, type Table } from 'apache-arrow';
+import {
+  Type,
+  type DataType,
+  type Field,
+  type RecordBatch,
+  type Schema,
+  type Table,
+} from 'apache-arrow';
 
 import type { ColumnSchema, QueryResult } from './types';
 import { kindForDuckDbType } from './types';
+
+/** A thing you can read rows out of positionally — an Arrow Table or batch. */
+interface RowSource {
+  numRows: number;
+  get(index: number): Record<string, unknown> | null;
+}
 
 /**
  * Convert an Arrow table into plain rows for the grid.
@@ -12,30 +25,75 @@ import { kindForDuckDbType } from './types';
  * hence the caller always applies a LIMIT first.
  */
 export function arrowToResult(table: Table, elapsedMs: number): QueryResult {
-  const fields = table.schema.fields;
-  const columns: ColumnSchema[] = fields.map((field) => {
-    const type = String(field.type);
-    return { name: field.name, type, kind: kindForDuckDbType(type) };
-  });
-
-  // Temporal columns arrive as plain numbers, so the *field type* decides how
-  // to read them — the value alone can't tell you whether 19000 is a day count
-  // or a quantity.
-  const converters = fields.map((field) => converterFor(field.type));
-
+  const plan = planFor(table.schema.fields);
   const rows: unknown[][] = [];
-  for (let i = 0; i < table.numRows; i++) {
-    const row = table.get(i);
+  appendRows(rows, table as unknown as RowSource, plan, Infinity);
+  return { columns: plan.columns, rows, rowCount: rows.length, elapsedMs };
+}
+
+/**
+ * Convert a streamed result into plain rows, stopping at `maxRows`.
+ *
+ * Streaming is what makes a user-written query cancellable (see
+ * `DataEngine.runQuery`), and it's also the row cap's natural home: a
+ * `SELECT *` over ten million rows should fill the grid and stop, not try to
+ * build a ten-million-element JS array first.
+ */
+export function batchesToResult(
+  schema: Schema,
+  batches: readonly RecordBatch[],
+  elapsedMs: number,
+  maxRows = Infinity,
+): QueryResult {
+  const plan = planFor(schema.fields);
+  const rows: unknown[][] = [];
+  for (const batch of batches) {
+    if (rows.length >= maxRows) break;
+    appendRows(rows, batch as unknown as RowSource, plan, maxRows);
+  }
+  return {
+    columns: plan.columns,
+    rows,
+    rowCount: rows.length,
+    elapsedMs,
+    truncated: rows.length >= maxRows,
+  };
+}
+
+interface ReadPlan {
+  columns: ColumnSchema[];
+  converters: Converter[];
+}
+
+function planFor(fields: readonly Field[]): ReadPlan {
+  return {
+    columns: fields.map((field) => {
+      const type = String(field.type);
+      return { name: field.name, type, kind: kindForDuckDbType(type) };
+    }),
+    // Temporal columns arrive as plain numbers, so the *field type* decides how
+    // to read them — the value alone can't tell you whether 19000 is a day count
+    // or a quantity.
+    converters: fields.map((field) => converterFor(field.type)),
+  };
+}
+
+function appendRows(
+  into: unknown[][],
+  source: RowSource,
+  { columns, converters }: ReadPlan,
+  maxRows: number,
+): void {
+  for (let i = 0; i < source.numRows && into.length < maxRows; i++) {
+    const row = source.get(i);
     if (!row) continue;
-    rows.push(
+    into.push(
       columns.map((column, index) => {
         const convert = converters[index] ?? normalizeValue;
         return convert(row[column.name]);
       }),
     );
   }
-
-  return { columns, rows, rowCount: table.numRows, elapsedMs };
 }
 
 type Converter = (value: unknown) => unknown;

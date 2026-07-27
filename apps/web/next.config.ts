@@ -1,4 +1,8 @@
+import { createRequire } from 'node:module';
+
 import type { NextConfig } from 'next';
+
+const require_ = createRequire(import.meta.url);
 
 /**
  * DuckDB-WASM's multi-threaded build needs `SharedArrayBuffer`, which browsers
@@ -28,6 +32,22 @@ const nextConfig: NextConfig = {
       test: /\.wasm$/,
       type: 'asset/resource',
     });
+
+    // Monaco's package exports map appends `.js` to every subpath, so its
+    // stylesheets are unreachable by package specifier — see
+    // src/lib/editor/monaco-sql.ts. Resolving the package's own entry and
+    // walking up to the file keeps this working under pnpm's symlinked layout,
+    // where a hardcoded node_modules path would not.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'monaco-codicon-modifiers.css': require_
+        .resolve('monaco-editor/editor/editor.api.js')
+        .replace(
+          /esm[/\\]vs[/\\]editor[/\\]editor\.api\.js$/,
+          'esm/vs/base/browser/ui/codicons/codicon/codicon-modifiers.css',
+        ),
+    };
+
     return config;
   },
 };

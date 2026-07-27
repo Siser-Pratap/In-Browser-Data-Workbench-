@@ -22,19 +22,23 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
+      <body className="h-full">
         {/*
           Apply the stored theme before first paint. Zustand's persisted state
           isn't readable until React hydrates, and without this the app renders
           one light frame before flipping to dark.
+
+          It sits at the top of <body> rather than in a hand-written <head>
+          because the App Router owns <head> and generates it from the metadata
+          API; a literal <head> in the root layout is unsupported. A script as
+          the first child of <body> is parsed before any of the app's markup, so
+          it is just as early.
         */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var s=localStorage.getItem('workbench-ui');var t=s?JSON.parse(s).state.theme:'dark';if(t==='dark')document.documentElement.classList.add('dark');}catch(e){document.documentElement.classList.add('dark');}})();`,
           }}
         />
-      </head>
-      <body className="h-full">
         <ThemeProvider>{children}</ThemeProvider>
         <Toaster />
       </body>

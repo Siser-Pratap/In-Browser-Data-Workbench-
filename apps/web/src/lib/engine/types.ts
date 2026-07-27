@@ -38,7 +38,29 @@ export interface QueryResult {
   rowCount: number;
   /** Milliseconds spent inside DuckDB. */
   elapsedMs: number;
+  /** True when the row cap stopped the read before the result was exhausted. */
+  truncated?: boolean;
 }
+
+/** Lazily-computed profile of one column, for the schema explorer popover. */
+export interface ColumnStats {
+  column: string;
+  rowCount: number;
+  nullCount: number;
+  distinctCount: number;
+  min: string | null;
+  max: string | null;
+  topValues: { value: string | null; count: number }[];
+}
+
+/** The engine's catalogue, flattened for autocomplete. */
+export interface CatalogTable {
+  name: string;
+  columns: ColumnSchema[];
+}
+
+/** Formats `COPY … TO` can write. */
+export type ExportFormat = 'csv' | 'json' | 'parquet';
 
 export interface ImportOptions {
   table: string;
@@ -89,12 +111,37 @@ export function tableNameFromFilename(filename: string): string {
   return /^\d/.test(cleaned) ? `t_${cleaned}` : cleaned;
 }
 
+/**
+ * Collapse a column type to the kind the UI reasons about.
+ *
+ * This has to understand **two spellings of the same types**. `DESCRIBE` gives
+ * DuckDB's names (`VARCHAR`, `BIGINT`, `TIMESTAMP`), while a query result is
+ * read out of Arrow, which calls the same things `Utf8`, `Int64` and
+ * `Timestamp<MICROSECOND>`. Getting that wrong is not cosmetic: the chart
+ * builder infers a chart from these kinds, so a text column read as `other`
+ * silently stops being a category anyone can group by.
+ *
+ * Order matters here, because these names nest inside each other:
+ * `INTERVAL` contains `INT`, `STRUCT(a VARCHAR)` contains `VARCHAR`, and
+ * Arrow spells an enum `Dictionary<Int8, Utf8>` — where the *indices* are an
+ * integer type and the values are the ones that matter.
+ */
 export function kindForDuckDbType(type: string): ColumnKind {
-  const t = type.toUpperCase();
-  if (/(INT|DECIMAL|NUMERIC|REAL|DOUBLE|FLOAT|HUGEINT)/.test(t)) return 'number';
+  const t = type.toUpperCase().trim();
+
+  // Composites first: their parameters name other types.
+  if (/^(LIST|LARGELIST|FIXEDSIZELIST|STRUCT|MAP|UNION)\s*[<(]/.test(t) || t.endsWith('[]')) {
+    return 'other';
+  }
+
+  const dictionary = /^DICTIONARY\s*<[^,]+,\s*(.+)>$/.exec(t);
+  if (dictionary) return kindForDuckDbType(dictionary[1]!);
+
+  // Temporal before numeric, so INTERVAL isn't caught by the `INT` in its name.
+  if (/(DATE|TIME|TIMESTAMP|INTERVAL|DURATION)/.test(t)) return 'date';
   if (/BOOL/.test(t)) return 'boolean';
-  if (/(DATE|TIME|TIMESTAMP|INTERVAL)/.test(t)) return 'date';
-  if (/(VARCHAR|CHAR|TEXT|STRING|UUID|ENUM)/.test(t)) return 'string';
+  if (/(VARCHAR|CHAR|TEXT|STRING|UUID|ENUM|UTF8)/.test(t)) return 'string';
+  if (/(INT|DECIMAL|NUMERIC|REAL|DOUBLE|FLOAT)/.test(t)) return 'number';
   return 'other';
 }
 

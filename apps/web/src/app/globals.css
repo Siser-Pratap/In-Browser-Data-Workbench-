@@ -59,6 +59,23 @@ body {
   }
 }
 
+/*
+ * Dashboard grid.
+ *
+ * react-grid-layout ships a bright red drop placeholder and an invisible resize
+ * handle. Both need to speak the app's palette rather than the library's.
+ */
+.react-grid-item.react-grid-placeholder {
+  background: var(--color-accent);
+  border-radius: 8px;
+  opacity: 0.15;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-right-color: var(--color-ink-muted);
+  border-bottom-color: var(--color-ink-muted);
+}
+
 /* Respect users who ask for less motion. */
 @media (prefers-reduced-motion: reduce) {
   *,
