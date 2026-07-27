@@ -2,6 +2,12 @@ import json
 from collections.abc import AsyncIterator
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+from ..core.config import Settings
+from ..core.deps import OptionalUserId
+from ..core.ratelimit import rate_limit
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
@@ -23,6 +29,9 @@ from .schemas import (
 )
 from .service import AIService
 
+# The daily token budget caps spend; this caps request rate, which the
+# budget alone does not (a rejected or cached call costs no tokens).
+router = APIRouter(prefix="/ai", tags=["ai"], dependencies=[rate_limit("ai")])
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
@@ -38,6 +47,9 @@ def get_app_settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
+# Identity for these local-first endpoints: a valid access token wins, else the
+# X-User-Id header (frontend bucket before sign-in), else a shared anonymous
+# bucket. See core.deps.optional_user_id.
 # Placeholder identity until Backend Phase 1 auth lands: budgets are keyed by an
 # X-User-Id header the frontend sends, falling back to a shared anonymous bucket.
 UserId = Annotated[str, Header(alias="X-User-Id")]
@@ -70,11 +82,13 @@ def _stream(events: AsyncIterator[dict]) -> StreamingResponse:
     )
 
 
+@router.post("/sql", operation_id="generateSql")
 @router.post("/sql")
 async def generate_sql(
     body: SqlGenerateRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Translate an English question into a validated DuckDB SQL proposal (SSE)."""
@@ -82,11 +96,13 @@ async def generate_sql(
     return _stream(service.stream_sql(body, user_id))
 
 
+@router.post("/sql/fix", operation_id="fixSql")
 @router.post("/sql/fix")
 async def fix_sql(
     body: SqlFixRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Repair a failing DuckDB query given its error message (SSE)."""
@@ -94,11 +110,13 @@ async def fix_sql(
     return _stream(service.stream_fix(body, user_id))
 
 
+@router.post("/sql/explain", operation_id="explainSql")
 @router.post("/sql/explain")
 async def explain_sql(
     body: SqlExplainRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Explain a SQL query in plain English (SSE)."""
@@ -106,11 +124,13 @@ async def explain_sql(
     return _stream(service.stream_explain(body, user_id))
 
 
+@router.post("/clean", operation_id="proposeCleaning")
 @router.post("/clean")
 async def suggest_cleaning(
     body: CleanRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Profile document in -> validated cleaning suggestions out (SSE).
@@ -122,11 +142,13 @@ async def suggest_cleaning(
     return _stream(service.stream_clean(body, user_id))
 
 
+@router.post("/insights", operation_id="generateInsights")
 @router.post("/insights")
 async def suggest_insights(
     body: InsightsRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Profile document in -> ranked insights out (SSE).
@@ -138,11 +160,13 @@ async def suggest_insights(
     return _stream(service.stream_insights(body, user_id))
 
 
+@router.post("/charts/suggest", operation_id="suggestCharts")
 @router.post("/charts/suggest")
 async def suggest_charts(
     body: ChartSuggestRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Profile document (+ optional question) -> 2-4 chart specs out (SSE)."""
@@ -158,11 +182,13 @@ def _require_configured(settings: Settings) -> None:
         raise HTTPException(status_code=503, detail="AI is not configured on this server.")
 
 
+@router.post("/chat", response_model=ChatCreateResponse, operation_id="createChatSession")
 @router.post("/chat", response_model=ChatCreateResponse)
 async def create_chat(
     body: ChatCreateRequest,
     chat: Chat,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> ChatCreateResponse:
     """Start an analyst chat session bound to the current dataset schemas."""
@@ -171,12 +197,14 @@ async def create_chat(
     return ChatCreateResponse(session_id=session_id, starter_prompts=starters)
 
 
+@router.post("/chat/{session_id}/message", operation_id="sendChatMessage")
 @router.post("/chat/{session_id}/message")
 async def chat_message(
     session_id: str,
     body: ChatMessageRequest,
     chat: Chat,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Send a user message; stream assistant text, tool calls, or completion (SSE).
@@ -197,12 +225,14 @@ async def chat_message(
     return _stream(chat.send_message(session_id, body.content, user_id))
 
 
+@router.post("/chat/{session_id}/tool-result", operation_id="submitChatToolResult")
 @router.post("/chat/{session_id}/tool-result")
 async def chat_tool_result(
     session_id: str,
     body: ChatToolResultRequest,
     chat: Chat,
     settings: Annotated[Settings, Depends(get_app_settings)],
+    user_id: OptionalUserId,
     user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Return browser tool results to resume a paused turn (SSE)."""
