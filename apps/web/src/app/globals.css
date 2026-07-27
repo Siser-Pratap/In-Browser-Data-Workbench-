@@ -1,0 +1,88 @@
+@import 'tailwindcss';
+
+/*
+ * One palette, expressed as CSS variables and switched by the `dark` class.
+ * Components reference the semantic names (surface, muted, border) rather than
+ * raw colours, so a theme change is a change here and nowhere else.
+ */
+@theme {
+  --color-canvas: oklch(99% 0 0);
+  --color-surface: oklch(97% 0.003 250);
+  --color-surface-raised: oklch(100% 0 0);
+  --color-border: oklch(90% 0.005 250);
+  --color-ink: oklch(25% 0.01 250);
+  --color-ink-muted: oklch(52% 0.012 250);
+  --color-accent: oklch(58% 0.16 255);
+  --color-accent-ink: oklch(99% 0 0);
+  --color-danger: oklch(58% 0.19 25);
+  --color-warn: oklch(72% 0.15 75);
+  --color-ok: oklch(64% 0.14 155);
+}
+
+.dark {
+  --color-canvas: oklch(19% 0.012 260);
+  --color-surface: oklch(23% 0.014 260);
+  --color-surface-raised: oklch(27% 0.016 260);
+  --color-border: oklch(33% 0.018 260);
+  --color-ink: oklch(95% 0.005 260);
+  --color-ink-muted: oklch(70% 0.015 260);
+  --color-accent: oklch(70% 0.15 255);
+  --color-accent-ink: oklch(20% 0.02 260);
+  --color-danger: oklch(68% 0.18 25);
+  --color-warn: oklch(78% 0.14 75);
+  --color-ok: oklch(72% 0.14 155);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The grid is dense; a slim scrollbar keeps the data as the loudest thing. */
+@supports selector(::-webkit-scrollbar) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/*
+ * Dashboard grid.
+ *
+ * react-grid-layout ships a bright red drop placeholder and an invisible resize
+ * handle. Both need to speak the app's palette rather than the library's.
+ */
+.react-grid-item.react-grid-placeholder {
+  background: var(--color-accent);
+  border-radius: 8px;
+  opacity: 0.15;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-right-color: var(--color-ink-muted);
+  border-bottom-color: var(--color-ink-muted);
+}
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

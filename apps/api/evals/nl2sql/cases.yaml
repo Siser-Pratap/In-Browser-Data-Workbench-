@@ -1,0 +1,84 @@
+# NL->SQL evaluation cases.
+#
+# Grading is execution-based: the model's generated SQL and `expected_sql` are
+# both executed against a DuckDB database built from `setup`, and their result
+# sets are compared (order-insensitive unless the question implies ordering).
+#
+# Grow this file toward ~60 cases across 3 sample datasets (see plan/ai/phase1.md).
+
+datasets:
+  shop:
+    setup: |
+      CREATE TABLE orders (id INTEGER, customer_id INTEGER, amount DOUBLE, ordered_at TIMESTAMP);
+      CREATE TABLE customers (id INTEGER, name VARCHAR, region VARCHAR);
+      INSERT INTO orders VALUES
+        (1, 1, 120.0, '2025-01-05 10:00:00'),
+        (2, 1,  80.0, '2025-02-11 09:30:00'),
+        (3, 2, 300.0, '2025-02-20 15:45:00'),
+        (4, 3,  50.0, '2025-03-02 08:15:00'),
+        (5, 2,  40.0, '2025-03-18 19:00:00'),
+        (6, 3, 220.0, '2025-03-25 12:00:00');
+      INSERT INTO customers VALUES
+        (1, 'Ada',   'EMEA'),
+        (2, 'Bao',   'APAC'),
+        (3, 'Cleo',  'EMEA');
+    tables:
+      - name: orders
+        columns:
+          - {name: id, type: INTEGER}
+          - {name: customer_id, type: INTEGER}
+          - {name: amount, type: DOUBLE}
+          - {name: ordered_at, type: TIMESTAMP}
+      - name: customers
+        columns:
+          - {name: id, type: INTEGER}
+          - {name: name, type: VARCHAR}
+          - {name: region, type: VARCHAR}
+
+cases:
+  - id: total-revenue
+    dataset: shop
+    question: what is the total revenue across all orders
+    expected_sql: SELECT SUM(amount) FROM orders
+
+  - id: monthly-revenue
+    dataset: shop
+    question: monthly revenue for 2025, earliest month first
+    ordered: true
+    expected_sql: |
+      SELECT date_trunc('month', ordered_at) AS month, SUM(amount)
+      FROM orders
+      WHERE ordered_at >= '2025-01-01' AND ordered_at < '2026-01-01'
+      GROUP BY 1 ORDER BY 1
+
+  - id: revenue-by-region
+    dataset: shop
+    question: total order amount by customer region
+    expected_sql: |
+      SELECT c.region, SUM(o.amount)
+      FROM orders o JOIN customers c ON c.id = o.customer_id
+      GROUP BY c.region
+
+  - id: top-customer
+    dataset: shop
+    question: which customer spent the most money in total, give their name and total
+    expected_sql: |
+      SELECT c.name, SUM(o.amount) AS total
+      FROM orders o JOIN customers c ON c.id = o.customer_id
+      GROUP BY c.name ORDER BY total DESC LIMIT 1
+
+  - id: orders-per-customer
+    dataset: shop
+    question: number of orders per customer name
+    expected_sql: |
+      SELECT c.name, COUNT(*)
+      FROM orders o JOIN customers c ON c.id = o.customer_id
+      GROUP BY c.name
+
+  - id: biggest-order-per-region
+    dataset: shop
+    question: the single largest order amount in each region
+    expected_sql: |
+      SELECT c.region, MAX(o.amount)
+      FROM orders o JOIN customers c ON c.id = o.customer_id
+      GROUP BY c.region

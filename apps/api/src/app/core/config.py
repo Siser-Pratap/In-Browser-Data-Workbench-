@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     ai_max_tokens: int = 2048
     ai_structured_max_tokens: int = 8192
     ai_daily_token_budget: int = 200_000
+    # Phase 2 structured endpoints (clean/insights/charts) return larger JSON.
+    ai_structured_max_tokens: int = 8192
+    ai_daily_token_budget: int = 200_000
+
+    # Schema context is capped before it reaches the prompt; see ai/serializer.py
     ai_schema_context_max_chars: int = 24_000
 
     # Phase 3 conversational analyst
@@ -82,6 +87,7 @@ class Settings(BaseSettings):
     # -- Platform ------------------------------------------------------------
     cors_origins: str = "http://localhost:3000"
     frontend_base_url: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000"
 
     @property
     def cors_origin_list(self) -> list[str]:

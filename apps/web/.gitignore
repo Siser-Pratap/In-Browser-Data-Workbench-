@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+coverage/
+next-env.d.ts
+public/duckdb/
+*.tsbuildinfo
+.DS_Store
+
+# Playwright
+test-results/
+playwright-report/
