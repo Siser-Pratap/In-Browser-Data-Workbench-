@@ -1,0 +1,77 @@
+# Phase 2 evaluation cases.
+#
+# Two kinds, both execution-graded against a DuckDB database built from `setup`:
+#
+# 1. cleaning cases: a `profile` document with planted defects + a list of
+#    `expected_defects` (substrings that should appear in some suggestion's
+#    finding/proposal/id). Measures recall of planted defects, and every
+#    returned `sql` must validate as CTAS + execute.
+#
+# 2. insight cases: a `profile` with a planted pattern. Every displayed
+#    insight's `verification_sql` must execute; and at least one insight's
+#    headline must mention `expected_signal`.
+#
+# Grow toward the acceptance bars in plan/ai/phase2.md.
+
+datasets:
+  dirty_users:
+    setup: |
+      CREATE TABLE users (
+        id INTEGER, email VARCHAR, signup_date VARCHAR, plan VARCHAR, mrr DOUBLE
+      );
+      INSERT INTO users VALUES
+        (1, 'ada@x.com',  '2025-01-05', 'pro',   99.0),
+        (2, '',           '2025-01-06', 'Pro',   99.0),
+        (3, 'n/a',        '2025-01-07', 'PRO',   99.0),
+        (4, 'cleo@x.com', '2025-02-01', 'free',   0.0),
+        (5, 'dev@x.com',  '2025-02-15', 'free',   0.0),
+        (6, 'eve@x.com',  '2025-03-01', 'pro',  -99.0);
+    profile:
+      version: 1
+      table: users
+      row_count: 6
+      columns:
+        - name: id
+          type: INTEGER
+          null_pct: 0.0
+          distinct_count: 6
+        - name: email
+          type: VARCHAR
+          null_pct: 0.0
+          distinct_count: 6
+          top_values:
+            - {value: "", count: 1}
+            - {value: "n/a", count: 1}
+          patterns: {regex_email_match_pct: 66.7}
+        - name: signup_date
+          type: VARCHAR
+          null_pct: 0.0
+          patterns: {regex_iso_date_match_pct: 100.0}
+        - name: plan
+          type: VARCHAR
+          null_pct: 0.0
+          distinct_count: 5
+          top_values:
+            - {value: "pro", count: 2}
+            - {value: "free", count: 2}
+            - {value: "Pro", count: 1}
+            - {value: "PRO", count: 1}
+        - name: mrr
+          type: DOUBLE
+          null_pct: 0.0
+          numeric: {min: -99.0, max: 99.0, mean: 33.0}
+      candidate_keys: [id]
+      sample_rows_included: false
+
+cleaning_cases:
+  - id: dirty-users-defects
+    dataset: dirty_users
+    expected_defects:
+      - email        # empty string / 'n/a' placeholder nulls
+      - plan         # inconsistent casing
+      - date         # date stored as VARCHAR
+
+insight_cases:
+  - id: plan-concentration
+    dataset: dirty_users
+    expected_signal: plan

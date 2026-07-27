@@ -1,0 +1,9 @@
+# `sharp` is Next's optional image optimiser and `unrs-resolver` backs the
+# ESLint resolver; both are native and need their install scripts to run.
+allowBuilds:
+  # `core-js` arrives transitively; its install script only prints a funding
+  # notice, so it stays off — but it has to be declared either way, or every
+  # `pnpm install` exits non-zero waiting for an answer.
+  core-js: false
+  sharp: true
+  unrs-resolver: true
