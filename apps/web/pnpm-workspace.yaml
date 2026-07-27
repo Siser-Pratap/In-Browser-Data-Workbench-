@@ -1,0 +1,5 @@
+# `sharp` is Next's optional image optimiser and `unrs-resolver` backs the
+# ESLint resolver; both are native and need their install scripts to run.
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
