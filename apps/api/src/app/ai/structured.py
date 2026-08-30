@@ -1,10 +1,15 @@
-"""Turn Pydantic models into structured-output schemas the API accepts.
+"""Turn Pydantic models into structured-output schemas.
 
-The structured-outputs subset requires `additionalProperties: false` on every
-object and benefits from every property being required (the model then emits
-explicit nulls instead of omitting fields). Pydantic's schema is close but not
-exact, so we post-process: force those two properties on every object node and
-strip `default` annotations.
+Used two ways, both of which take standard JSON Schema: Gemini's
+`response_json_schema` for the Phase 2 endpoints, and `parameters_json_schema`
+on a function declaration for the analyst's tools.
+
+Pydantic's output is close but benefits from two adjustments. Marking every
+property required makes the model emit explicit nulls rather than omitting
+fields, which turns "absent" into a value the parser can distinguish from a
+truncated response. `additionalProperties: false` keeps it from inventing keys
+the Pydantic model will then reject. `default` is stripped because it describes
+what *our* code does when a field is missing, and is only noise to the model.
 """
 
 from typing import Any

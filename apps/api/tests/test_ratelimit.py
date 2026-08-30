@@ -10,7 +10,7 @@ from .conftest import database_url
 @pytest.fixture
 def client():
     settings = Settings(
-        anthropic_api_key="test-key",
+        gemini_api_key="test-key",
         database_url=database_url(),
         db_auto_create=True,
         cookie_secure=False,
@@ -44,7 +44,7 @@ def test_the_default_limit_actually_applies_to_the_expensive_endpoints():
     """`rate_limit_default_per_minute` was dead config: every call site passed
     `auth=True`, so setting it had no effect anywhere."""
     settings = Settings(
-        anthropic_api_key="",
+        gemini_api_key="",
         database_url=database_url(),
         db_auto_create=True,
         jwt_secret="test-secret",

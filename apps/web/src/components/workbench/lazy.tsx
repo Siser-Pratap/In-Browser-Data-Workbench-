@@ -40,6 +40,22 @@ export const LazyColumnOpsDialog = dynamic(
   { ssr: false },
 );
 
+// Split for the same reason as the rest, plus one specific to it: a build with
+// no API configured never opens this dialog, so its chunk — and the generated
+// API types it drags in — is never fetched at all.
+export const LazyAskAiDialog = dynamic(
+  () => import('@/components/ai/AskAiDialog').then((module) => module.AskAiDialog),
+  { ssr: false },
+);
+
+// The analyst drags in the tool executor and the profiler on top of the API
+// client, so it is the largest of the AI chunks — and the one most likely never
+// to be opened in a given session.
+export const LazyAnalystPanel = dynamic(
+  () => import('@/components/ai/AnalystPanel').then((module) => module.AnalystPanel),
+  { ssr: false, loading: () => Skeleton('Loading the analyst…') },
+);
+
 function Skeleton(label: string) {
   return (
     <div className="flex h-full items-center justify-center text-xs text-[var(--color-ink-muted)]">

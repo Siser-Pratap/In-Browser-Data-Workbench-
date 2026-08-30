@@ -104,9 +104,35 @@ from app.ai.schemas import ColumnSchema, TableSchema
 from app.core.config import Settings
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _isolate_ambient_env():
+    """Keep the process environment out of the tests.
+
+    `_env_file=None` stops pydantic-settings reading a `.env`, but it does *not*
+    stop it reading `os.environ` — so a container that exports `ENVIRONMENT` or
+    a real API key silently changes what every `Settings(...)` in the suite
+    resolves to. That is not hypothetical: the dev compose file sets
+    `ENVIRONMENT=development`, which made every AI test resolve to the empty
+    development key and answer 503.
+
+    Cleared session-wide rather than fixed per call site, because the next
+    setting anyone adds would otherwise reintroduce the same leak.
+    """
+    saved = {name: os.environ.pop(name, None) for name in _AMBIENT}
+    yield
+    for name, value in saved.items():
+        if value is not None:
+            os.environ[name] = value
+
+
+_AMBIENT = ("ENVIRONMENT", "GEMINI_API_KEY", "GEMINI_API_KEY_DEV", "AI_MODEL", "S3_BUCKET")
+
+
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(anthropic_api_key="test-key", _env_file=None)
+    # Explicit about the environment as well as the key: which of the two keys
+    # is live is exactly what these tests must not leave to ambient config.
+    return Settings(environment="production", gemini_api_key="test-key", _env_file=None)
 
 
 @pytest.fixture

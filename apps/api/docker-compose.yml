@@ -1,0 +1,99 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: workbench
+      POSTGRES_PASSWORD: workbench
+      POSTGRES_DB: workbench
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workbench"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: workbench
+      MINIO_ROOT_PASSWORD: workbench-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://workbench:workbench@db:5432/workbench
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: dev-only-change-me
+      COOKIE_SECURE: "false"
+      CORS_ORIGINS: http://localhost:3000
+      # Provide your key to enable the AI endpoints:
+      ENVIRONMENT: development
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEY_DEV: ${GEMINI_API_KEY_DEV:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: workbench
+      S3_SECRET_KEY: workbench-secret
+    ports:
+      - "8000:8000"
+    # Run migrations, then serve.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --app-dir src --host 0.0.0.0 --port 8000"
+
+  # Background jobs: server-side compute, purges, cleanup. Without this service
+  # the API still works — it detects no worker and runs jobs in-process.
+  worker:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://workbench:workbench@db:5432/workbench
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: dev-only-change-me
+      ENVIRONMENT: development
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEY_DEV: ${GEMINI_API_KEY_DEV:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: workbench
+      S3_SECRET_KEY: workbench-secret
+      # The app isn't installed as a package; the API uses uvicorn --app-dir.
+      PYTHONPATH: /app/src
+    command: arq app.workers.worker.WorkerSettings
+
+volumes:
+  db_data:
+  minio_data:

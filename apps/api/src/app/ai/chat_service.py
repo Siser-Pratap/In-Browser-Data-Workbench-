@@ -17,9 +17,8 @@ Event stream (each dict → one SSE event):
 import json
 from collections.abc import AsyncIterator
 
-import anthropic
-
 from ..core.config import Settings
+from . import llm
 from .budget import TokenBudget
 from .chat_prompts import CHAT_SYSTEM_PROMPT, starter_prompts
 from .chat_session import (
@@ -36,7 +35,7 @@ class ChatService:
         self.settings = settings
         self.budget = budget
         self.sessions = ChatSessionStore(ttl_seconds=settings.ai_chat_session_ttl_seconds)
-        self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key or None)
+        self.client = llm.build_client(settings.active_gemini_api_key)
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -57,7 +56,7 @@ class ChatService:
 
         session.turns += 1
         session.tool_calls_this_turn = 0
-        session.messages.append({"role": "user", "content": content})
+        session.messages.append(llm.user_text(content))
         async for event in self._run_loop(session, user_id):
             yield event
 
@@ -69,16 +68,22 @@ class ChatService:
             raise NotAwaitingToolsError(session_id)
 
         returned = {r.tool_use_id for r in results}
-        if returned != set(session.pending_ids):
+        if returned != set(session.pending_calls):
             raise NotAwaitingToolsError(
-                f"expected results for {session.pending_ids}, got {sorted(returned)}"
+                f"expected results for {sorted(session.pending_calls)}, got {sorted(returned)}"
             )
 
         cap = self.settings.ai_chat_tool_result_max_chars
-        client_blocks = [_tool_result_block(r, cap) for r in results]
-        merged = session.partial_results + client_blocks
-        session.messages.append({"role": "user", "content": merged})
-        session.pending_ids = []
+        client_parts = [
+            _tool_response_part(r, session.pending_calls[r.tool_use_id], cap) for r in results
+        ]
+        # Server-resolved failures (invalid SQL, never sent to the browser) and
+        # the browser's own results are one user turn: Gemini expects every
+        # function_call in the preceding model turn to be answered together.
+        session.messages.append(
+            {"role": llm.ROLE_USER, "parts": session.partial_results + client_parts}
+        )
+        session.pending_calls = {}
         session.partial_results = []
 
         async for event in self._run_loop(session, user_id):
@@ -97,23 +102,25 @@ class ChatService:
                     or session.tokens_used >= self.settings.ai_chat_session_token_budget
                 )
 
-                content: list[dict] = []
+                message: dict = {}
+                text = ""
+                tool_uses: list[dict] = []
                 usage = {"input_tokens": 0, "output_tokens": 0}
                 async for event in self._call_model(session, force_wrap):
                     if event["type"] == "delta":
                         yield event
                     else:
-                        content, usage = event["content"], event["usage"]
+                        message = event["message"]
+                        text = event["text"]
+                        tool_uses = event["calls"]
+                        usage = event["usage"]
 
-                session.messages.append({"role": "assistant", "content": content})
+                session.messages.append(message)
                 session.tokens_used += usage["input_tokens"] + usage["output_tokens"]
                 self.budget.record(user_id, usage["input_tokens"] + usage["output_tokens"])
 
-                text = _text_of(content)
                 if text:
                     yield {"type": "message", "text": text}
-
-                tool_uses = [b for b in content if b["type"] == "tool_use"]
                 if not tool_uses:
                     session.tool_calls_this_turn = 0
                     yield {"type": "done", "usage": usage}
@@ -125,10 +132,12 @@ class ChatService:
                 if not client_calls:
                     # Every call was resolved server-side (invalid SQL): feed the
                     # errors back and let the model self-correct without the client.
-                    session.messages.append({"role": "user", "content": server_results})
+                    session.messages.append(
+                        {"role": llm.ROLE_USER, "parts": server_results}
+                    )
                     continue
 
-                session.pending_ids = [tu["id"] for tu in client_calls]
+                session.pending_calls = {tu["id"]: tu["name"] for tu in client_calls}
                 session.partial_results = server_results
                 for tu in client_calls:
                     yield {
@@ -139,7 +148,7 @@ class ChatService:
                     }
                 yield {"type": "awaiting_tools"}
                 return
-        except anthropic.APIError as e:
+        except llm.APIError as e:
             yield _api_error(e)
 
     def _triage(
@@ -152,7 +161,9 @@ class ChatService:
             validation = validate_tool_use(tu["name"], tu["input"], session.known_tables)
             if not validation.result.ok:
                 server_results.append(
-                    _error_result(tu["id"], validation.result.error or "invalid tool call")
+                    _error_result(
+                        tu["id"], tu["name"], validation.result.error or "invalid tool call"
+                    )
                 )
                 continue
             if validation.created_table and validation.created_table not in session.known_tables:
@@ -163,73 +174,81 @@ class ChatService:
     # -- model seam (mocked in tests) ----------------------------------------
 
     async def _call_model(self, session: ChatSession, force_wrap: bool) -> AsyncIterator[dict]:
-        """Yield delta events, then one {"type":"final","content","usage"} event."""
-        kwargs: dict = {}
-        if force_wrap:
-            kwargs["tool_choice"] = {"type": "none"}
-        else:
-            kwargs["tools"] = CHAT_TOOLS
+        """Yield delta events, then one normalised final event.
 
-        async with self.client.messages.stream(
+        The final event is `{"type": "final", "message", "text", "calls",
+        "usage"}` — `message` being the assistant turn to append verbatim, and
+        `calls` the function calls in `{id, name, input}` form. Keeping that
+        shape provider-neutral is what lets the loop above, and the tests that
+        script this method, stay unaware of which model is behind it.
+        """
+        stream = await self.client.aio.models.generate_content_stream(
             model=self.settings.ai_model,
-            max_tokens=self.settings.ai_chat_max_tokens,
-            thinking={"type": "adaptive"},
-            output_config={"effort": self.settings.ai_effort},
-            system=[
-                {"type": "text", "text": CHAT_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
-            ],
-            messages=session.messages,
-            **kwargs,
-        ) as stream:
-            async for text in stream.text_stream:
-                yield {"type": "delta", "text": text}
-            final = await stream.get_final_message()
+            contents=session.messages,
+            config=llm.generation_config(
+                system_instruction=CHAT_SYSTEM_PROMPT,
+                max_output_tokens=self.settings.ai_chat_max_tokens,
+                effort=self.settings.ai_effort,
+                tools=None if force_wrap else CHAT_TOOLS,
+                force_no_tools=force_wrap,
+            ),
+        )
+
+        # Chunks are accumulated rather than handled one at a time: a function
+        # call can arrive split across chunks, and only the last chunk carries
+        # the usage totals for the turn.
+        parts: list[dict] = []
+        calls: list[dict] = []
+        text_parts: list[str] = []
+        usage = {"input_tokens": 0, "output_tokens": 0}
+
+        async for chunk in stream:
+            delta = llm.text_of(chunk)
+            if delta:
+                text_parts.append(delta)
+                yield {"type": "delta", "text": delta}
+            chunk_message = llm.model_parts(chunk)
+            parts.extend(chunk_message["parts"])
+            calls.extend(llm.function_calls_of(chunk))
+            chunk_usage = llm.usage_of(chunk)
+            if chunk_usage["input_tokens"] or chunk_usage["output_tokens"]:
+                usage = chunk_usage
 
         yield {
             "type": "final",
-            "content": [block.model_dump() for block in final.content],
-            "usage": {
-                "input_tokens": final.usage.input_tokens,
-                "output_tokens": final.usage.output_tokens,
-            },
+            "message": {"role": llm.ROLE_MODEL, "parts": parts},
+            "text": "".join(text_parts).strip(),
+            "calls": calls,
+            "usage": usage,
         }
 
 
-def _text_of(content: list[dict]) -> str:
-    return "".join(b.get("text", "") for b in content if b.get("type") == "text").strip()
+def _tool_response_part(result: ClientToolResult, name: str, max_chars: int) -> dict:
+    """One browser result, as the function_response part Gemini expects.
 
-
-def _tool_result_block(result: ClientToolResult, max_chars: int) -> dict:
+    Truncation happens on the serialised text and is announced in-band: a
+    silently cut result reads to the model as the complete answer, which is how
+    an agent confidently reports a total that is simply wrong.
+    """
     if isinstance(result.content, str):
         text = result.content
     else:
         text = json.dumps(result.content, default=str)
     if len(text) > max_chars:
         text = text[:max_chars] + "\n… [result truncated]"
-    return {
-        "type": "tool_result",
-        "tool_use_id": result.tool_use_id,
-        "content": text,
-        "is_error": result.is_error,
-    }
+
+    payload: dict = {"error": text} if result.is_error else {"result": text}
+    return llm.function_response_part(result.tool_use_id, name, payload)
 
 
-def _error_result(tool_use_id: str, message: str) -> dict:
-    return {
-        "type": "tool_result",
-        "tool_use_id": tool_use_id,
-        "content": f"Error: {message}",
-        "is_error": True,
-    }
+def _error_result(tool_use_id: str, name: str, message: str) -> dict:
+    """A failure resolved server-side, fed back without a browser round trip."""
+    return llm.function_response_part(tool_use_id, name, {"error": f"Error: {message}"})
 
 
 def _error(code: str, message: str) -> dict:
     return {"type": "error", "code": code, "message": message}
 
 
-def _api_error(e: anthropic.APIError) -> dict:
-    if isinstance(e, anthropic.RateLimitError):
-        return _error("upstream_rate_limited", "The AI service is rate-limited; try again shortly.")
-    if isinstance(e, anthropic.AuthenticationError):
-        return _error("not_configured", "AI is not configured on this server.")
-    return _error("upstream_error", "The AI service failed to respond.")
+def _api_error(e: Exception) -> dict:
+    return llm.error_event(e)

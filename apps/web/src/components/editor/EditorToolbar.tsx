@@ -1,15 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { BookmarkPlus, Play, Square, Wand2 } from 'lucide-react';
+import { BookmarkPlus, Play, Sparkles, Square, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import type { AskMode } from '@/components/ai/AskAiDialog';
 import type { TransformKind } from '@/components/transform/TransformDialog';
-import { LazyTransformDialog } from '@/components/workbench/lazy';
+import { LazyAskAiDialog, LazyTransformDialog } from '@/components/workbench/lazy';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Field } from '@/components/ui/Field';
 import { Menu } from '@/components/ui/Menu';
+import { apiConfigured } from '@/lib/api/config';
 import { useDatasetStore } from '@/stores/datasets';
 import { useHistoryStore } from '@/stores/history';
 
@@ -36,8 +38,12 @@ export function EditorToolbar({ sql, running, onRun, onCancel, onFormat, onOpenI
 
   const [transform, setTransform] = useState<TransformKind | null>(null);
   const [savingSnippet, setSavingSnippet] = useState(false);
+  const [ask, setAsk] = useState<AskMode | null>(null);
 
   const table = activeTable ?? datasets[0]?.table ?? null;
+  // No API means no AI. The buttons aren't disabled, they're absent — a greyed
+  // control implies a feature you could unlock, and in this build there isn't one.
+  const aiAvailable = apiConfigured();
 
   return (
     <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1">
@@ -92,6 +98,28 @@ export function EditorToolbar({ sql, running, onRun, onCancel, onFormat, onOpenI
         }))}
       />
 
+      {aiAvailable && (
+        <>
+          <Button
+            size="sm"
+            icon={<Sparkles className="size-3" />}
+            onClick={() => setAsk({ kind: 'ask' })}
+            disabled={!table}
+            title="Describe what you want in English and get SQL back"
+          >
+            Ask AI
+          </Button>
+          <Button
+            size="sm"
+            disabled={!sql.trim()}
+            onClick={() => setAsk({ kind: 'explain', sql })}
+            title="Explain this query in plain English"
+          >
+            Explain
+          </Button>
+        </>
+      )}
+
       <span className="ml-auto pr-1 text-[11px] text-[var(--color-ink-muted)]">
         Cmd/Ctrl+Enter to run · select text to run just that
       </span>
@@ -105,6 +133,14 @@ export function EditorToolbar({ sql, running, onRun, onCancel, onFormat, onOpenI
             setTransform(null);
             onOpenInEditor(generated);
           }}
+        />
+      )}
+
+      {ask && (
+        <LazyAskAiDialog
+          mode={ask}
+          onClose={() => setAsk(null)}
+          onUseSql={(generated) => onOpenInEditor(generated)}
         />
       )}
 

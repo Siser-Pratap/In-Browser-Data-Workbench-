@@ -32,15 +32,22 @@ class ChatSession:
     tokens_used: int = 0
     turns: int = 0
     tool_calls_this_turn: int = 0
-    # Set while paused: the tool_use ids the browser must return, plus the
-    # server-resolved results (invalid SQL) to merge with the client's.
-    pending_ids: list[str] = field(default_factory=list)
+    # Set while paused: the calls the browser must return, as {id: tool name},
+    # plus the server-resolved results (invalid SQL) to merge with the client's.
+    #
+    # The name is kept, not just the id, because a Gemini `function_response`
+    # must name the function it answers — unlike a bare id-keyed tool result.
+    pending_calls: dict[str, str] = field(default_factory=dict)
     partial_results: list[dict] = field(default_factory=list)
     last_activity: dt.datetime = field(default_factory=lambda: dt.datetime.now(dt.UTC))
 
     @property
     def awaiting_tools(self) -> bool:
-        return bool(self.pending_ids)
+        return bool(self.pending_calls)
+
+    @property
+    def pending_ids(self) -> list[str]:
+        return list(self.pending_calls)
 
     def touch(self) -> None:
         self.last_activity = dt.datetime.now(dt.UTC)

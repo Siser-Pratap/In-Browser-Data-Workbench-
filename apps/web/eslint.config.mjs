@@ -11,6 +11,15 @@ export default tseslint.config(
       'coverage/**',
       'public/duckdb/**',
       'next-env.d.ts',
+      // Playwright's artifacts. Generated, git-ignored, and full of bundled
+      // JS — but flat config doesn't read .gitignore, so `pnpm lint` after a
+      // local e2e run would otherwise report hundreds of errors in a trace.
+      'test-results/**',
+      'playwright-report/**',
+      // Written by `pnpm gen:api` from the server's OpenAPI document. Linting
+      // generated code just means the next regeneration reintroduces the same
+      // complaints.
+      'src/lib/api/schema.ts',
     ],
   },
   js.configs.recommended,

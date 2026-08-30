@@ -1,19 +1,37 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+Environment = Literal["production", "development"]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # -- AI ------------------------------------------------------------------
-    anthropic_api_key: str = ""
+    # Which deployment this is. Typed rather than a free string: it decides
+    # which API key gets spent, so a typo should stop the app at startup rather
+    # than quietly resolve to the wrong one.
+    #
+    # Defaults to production so a deployment that sets nothing uses the primary
+    # key; the dev compose file opts in to `development` explicitly.
+    environment: Environment = "production"
 
-    ai_model: str = "claude-opus-4-8"
+    # -- AI ------------------------------------------------------------------
+    # Two keys, picked by `environment` — see `active_gemini_api_key`. Splitting
+    # them keeps local experimentation off the production quota and makes spend
+    # attributable per environment.
+    gemini_api_key: str = ""
+    gemini_api_key_dev: str = ""
+
+    # An alias rather than a pinned id, on purpose: a pinned model eventually
+    # returns "no longer available to new users" — a 404 at runtime for a
+    # default that used to work. The alias tracks the current Flash model, and
+    # a deployment that wants reproducibility pins AI_MODEL explicitly.
+    ai_model: str = "gemini-flash-latest"
+    # Maps to Gemini's thinking level: "low" | "medium" | "high".
     ai_effort: str = "medium"
     ai_max_tokens: int = 2048
-    ai_structured_max_tokens: int = 8192
-    ai_daily_token_budget: int = 200_000
     # Phase 2 structured endpoints (clean/insights/charts) return larger JSON.
     ai_structured_max_tokens: int = 8192
     ai_daily_token_budget: int = 200_000
@@ -92,6 +110,42 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def is_development(self) -> bool:
+        return self.environment == "development"
+
+    @property
+    def active_gemini_api_key(self) -> str:
+        """The key this environment is allowed to spend.
+
+        **There is deliberately no fallback to the production key.** If
+        `ENVIRONMENT=development` and `GEMINI_API_KEY_DEV` is unset, the AI
+        endpoints report themselves unconfigured — exactly as they already do
+        when no key is set at all — rather than quietly billing production from
+        a developer's laptop. That silent fallback is the precise accident this
+        split exists to prevent, and it is the kind you only discover on an
+        invoice. Recovering is a one-line change either way: provide the dev
+        key, or set `ENVIRONMENT=production`.
+        """
+        return self.gemini_api_key_dev if self.is_development else self.gemini_api_key
+
+    @property
+    def ai_unconfigured_reason(self) -> str | None:
+        """Why the AI endpoints are off, or None when they are on.
+
+        Returned to the caller so "nothing happens" is never the whole story —
+        a missing dev key and a missing production key are different mistakes
+        with different fixes.
+        """
+        if self.active_gemini_api_key:
+            return None
+        if self.is_development:
+            return (
+                "AI is not configured for the development environment. Set GEMINI_API_KEY_DEV, "
+                "or set ENVIRONMENT=production to use GEMINI_API_KEY."
+            )
+        return "AI is not configured on this server."
 
 
 @lru_cache

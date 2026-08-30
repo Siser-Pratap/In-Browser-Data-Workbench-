@@ -10,7 +10,7 @@ USAGE = {"input_tokens": 100, "output_tokens": 50}
 
 
 def make_client(settings: Settings, model_text: str) -> TestClient:
-    """App with the Anthropic call stubbed to stream `model_text`."""
+    """App with the model call stubbed to stream `model_text`."""
     app = create_app(settings)
 
     async def fake_stream_model(system: str, user_message: str, user_id: str):
@@ -91,7 +91,7 @@ def test_invalid_sql_without_successful_correction_errors(settings, monkeypatch)
 
 
 def test_missing_api_key_returns_503(sales_table):
-    settings = Settings(anthropic_api_key="", _env_file=None)
+    settings = Settings(gemini_api_key="", _env_file=None)
     client = make_client(settings, "")
     assert client.post("/api/v1/ai/sql", json=BODY).status_code == 503
 

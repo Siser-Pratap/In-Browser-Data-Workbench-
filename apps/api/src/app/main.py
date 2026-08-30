@@ -106,14 +106,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_problem_handlers(app)
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(RequestContextMiddleware)
-        description="Backend for the local-first data workbench. "
-        "AI endpoints translate natural language into DuckDB SQL proposals; "
-        "execution always happens client-side.",
-    )
-    app.state.settings = settings
-    app.state.ai_service = AIService(settings)
-    # Chat shares the daily token budget with the other AI endpoints.
-    app.state.chat_service = ChatService(settings, app.state.ai_service.budget)
 
     app.add_middleware(
         CORSMiddleware,

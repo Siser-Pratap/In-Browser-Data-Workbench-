@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertCircle, BarChart3, Download, Loader2, Table2 } from 'lucide-react';
+import { AlertCircle, BarChart3, Download, Loader2, Sparkles, Table2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import type { AskMode } from '@/components/ai/AskAiDialog';
 import { AddToDashboard } from '@/components/dashboards/AddToDashboard';
 import { ChartExportMenu } from '@/components/charts/ChartExportMenu';
 import { ResultsGrid } from '@/components/grid/ResultsGrid';
-import { LazyChartBuilder } from '@/components/workbench/lazy';
+import { LazyAskAiDialog, LazyChartBuilder } from '@/components/workbench/lazy';
+import { apiConfigured } from '@/lib/api/config';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Field } from '@/components/ui/Field';
@@ -52,6 +54,7 @@ export function ResultsPanel({
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState<'table' | 'chart'>('table');
+  const [fixing, setFixing] = useState<AskMode | null>(null);
   const refreshCatalog = useCatalogStore((state) => state.refresh);
 
   const { status, result, error, ranSql, cancelled } = runtime;
@@ -96,17 +99,35 @@ export function ResultsPanel({
           {error.hint && (
             <p className="mt-2 text-xs text-[var(--color-ink-muted)]">{error.hint}</p>
           )}
-          {ranSql && onOpenInEditor && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              onClick={() => onOpenInEditor(ranSql)}
-            >
-              Put this SQL back in the editor
-            </Button>
-          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {ranSql && onOpenInEditor && (
+              <Button variant="outline" size="sm" onClick={() => onOpenInEditor(ranSql)}>
+                Put this SQL back in the editor
+              </Button>
+            )}
+            {/* The fix endpoint wants DuckDB's own message, so `error.detail` is
+                passed through rather than the friendlier `title` — a paraphrase
+                is exactly the information the model needs and we don't have. */}
+            {ranSql && onOpenInEditor && apiConfigured() && (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Sparkles className="size-3" />}
+                onClick={() => setFixing({ kind: 'fix', sql: ranSql, error: error.detail })}
+              >
+                Fix with AI
+              </Button>
+            )}
+          </div>
         </div>
+
+        {fixing && (
+          <LazyAskAiDialog
+            mode={fixing}
+            onClose={() => setFixing(null)}
+            onUseSql={(fixed) => onOpenInEditor?.(fixed)}
+          />
+        )}
       </div>
     );
   }

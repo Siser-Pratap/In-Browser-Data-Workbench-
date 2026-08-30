@@ -18,7 +18,7 @@ from .conftest import database_url
 @pytest.fixture
 def app_settings() -> Settings:
     return Settings(
-        anthropic_api_key="test-key",
+        gemini_api_key="test-key",
         # A file-backed temp DB would be needed for multiple engines; one
         # in-memory database is shared by every session here.
         database_url=database_url(),

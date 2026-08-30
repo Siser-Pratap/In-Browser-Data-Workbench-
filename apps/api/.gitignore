@@ -1,0 +1,7 @@
+# Ignores live in the repo-root .gitignore. This file is intentionally minimal.
+#
+# IMPORTANT: do not ignore `__init__.py` — those are real package markers that
+# must be committed. An earlier version had `*__init__.py` here, which hid the
+# entire app package from git.
+
+*.md

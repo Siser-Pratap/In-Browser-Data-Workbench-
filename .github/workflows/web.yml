@@ -1,0 +1,69 @@
+name: web
+
+on:
+  push:
+    paths: ['apps/web/**', '.github/workflows/web.yml']
+  pull_request:
+    paths: ['apps/web/**', '.github/workflows/web.yml']
+
+defaults:
+  run:
+    working-directory: apps/web
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      # `pretest` copies the DuckDB bundles and mirrors the extensions; the
+      # download is retried and non-fatal, so a CDN blip won't fail the build.
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+      # Monaco, ECharts, jsPDF and DuckDB are each several times the budget on
+      # their own, and each is behind a dynamic import. This is what stops one
+      # convenient top-level import from quietly undoing that.
+      - name: Bundle budget
+        run: pnpm size
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      # The suite builds and serves the app itself (see playwright.config.ts).
+      # It deliberately runs against a production build: the lazily-loaded
+      # chunks and the COOP/COEP headers are exactly what dev mode wouldn't
+      # exercise.
+      - name: End-to-end
+        run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: apps/web/test-results
+          retention-days: 7

@@ -12,6 +12,7 @@ interface UiState {
   theme: Theme;
   sidebarOpen: boolean;
   historyOpen: boolean;
+  analystOpen: boolean;
   view: View;
   paletteOpen: boolean;
   /** The first-run tour is shown once; this is what "once" means. */
@@ -21,6 +22,7 @@ interface UiState {
   setTheme: (theme: Theme) => void;
   toggleSidebar: () => void;
   toggleHistory: () => void;
+  toggleAnalyst: () => void;
   setView: (view: View) => void;
   setPaletteOpen: (open: boolean) => void;
   dismissTour: () => void;
@@ -33,6 +35,7 @@ export const useUiStore = create<UiState>()(
       theme: 'dark',
       sidebarOpen: true,
       historyOpen: false,
+      analystOpen: false,
       view: 'data',
       paletteOpen: false,
       tourSeen: false,
@@ -41,6 +44,7 @@ export const useUiStore = create<UiState>()(
       setTheme: (theme) => set({ theme }),
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleHistory: () => set((state) => ({ historyOpen: !state.historyOpen })),
+      toggleAnalyst: () => set((state) => ({ analystOpen: !state.analystOpen })),
       setView: (view) => set({ view }),
       setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
       dismissTour: () => set({ tourSeen: true }),
@@ -56,6 +60,7 @@ export const useUiStore = create<UiState>()(
         theme: state.theme,
         sidebarOpen: state.sidebarOpen,
         historyOpen: state.historyOpen,
+        analystOpen: state.analystOpen,
         view: state.view,
         tourSeen: state.tourSeen,
       }),

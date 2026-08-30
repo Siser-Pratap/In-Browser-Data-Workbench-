@@ -50,10 +50,39 @@ class ScriptedModel:
     async def __call__(self, session, force_wrap):
         self.calls.append(force_wrap)
         content = self.wrap if force_wrap else self.turns.pop(0)
+
+        # The blocks above are the test's authoring vocabulary; the seam's real
+        # contract is the normalised final event below, so the translation
+        # happens here and every individual test stays provider-agnostic.
+        parts: list[dict] = []
+        calls: list[dict] = []
+        text_parts: list[str] = []
         for block in content:
             if block["type"] == "text":
                 yield {"type": "delta", "text": block["text"]}
-        yield {"type": "final", "content": content, "usage": USAGE}
+                text_parts.append(block["text"])
+                parts.append({"text": block["text"]})
+            else:
+                parts.append(
+                    {
+                        "function_call": {
+                            "id": block["id"],
+                            "name": block["name"],
+                            "args": block["input"],
+                        }
+                    }
+                )
+                calls.append(
+                    {"id": block["id"], "name": block["name"], "input": block["input"]}
+                )
+
+        yield {
+            "type": "final",
+            "message": {"role": "model", "parts": parts},
+            "text": "".join(text_parts).strip(),
+            "calls": calls,
+            "usage": USAGE,
+        }
 
 
 def make_client(settings, model: ScriptedModel) -> TestClient:
@@ -287,7 +316,7 @@ def test_sessions_are_scoped_to_user(settings):
 def test_chat_missing_api_key_returns_503():
     from app.core.config import Settings
 
-    settings = Settings(anthropic_api_key="", _env_file=None)
+    settings = Settings(gemini_api_key="", _env_file=None)
     client = make_client(settings, ScriptedModel([]))
     assert client.post("/api/v1/ai/chat", json={"tables": TABLES}).status_code == 503
 

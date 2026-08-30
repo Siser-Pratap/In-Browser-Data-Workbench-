@@ -2,7 +2,7 @@
 
 Run manually / nightly:
 
-    ANTHROPIC_API_KEY=... uv run pytest evals/insights -m eval -v
+    GEMINI_API_KEY=... uv run pytest evals/insights -m eval -v
 
 Cleaning cases measure planted-defect recall and require every returned `sql`
 to validate as CTAS and execute. Insight cases require every displayed
@@ -46,8 +46,8 @@ def _case_id(param):
 
 @pytest.fixture(scope="module")
 def service():
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.skip("ANTHROPIC_API_KEY not set")
+    if not os.environ.get("GEMINI_API_KEY"):
+        pytest.skip("GEMINI_API_KEY not set")
     from app.ai.service import AIService
     from app.core.config import Settings
 

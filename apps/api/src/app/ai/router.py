@@ -8,10 +8,6 @@ from fastapi.responses import StreamingResponse
 from ..core.config import Settings
 from ..core.deps import OptionalUserId
 from ..core.ratelimit import rate_limit
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
-
-from ..core.config import Settings
 from .budget import BudgetExceededError
 from .chat_service import ChatService
 from .chat_session import NotAwaitingToolsError, SessionNotFoundError
@@ -32,7 +28,6 @@ from .service import AIService
 # The daily token budget caps spend; this caps request rate, which the
 # budget alone does not (a rejected or cached call costs no tokens).
 router = APIRouter(prefix="/ai", tags=["ai"], dependencies=[rate_limit("ai")])
-router = APIRouter(prefix="/ai", tags=["ai"])
 
 
 def get_service(request: Request) -> AIService:
@@ -50,9 +45,6 @@ def get_app_settings(request: Request) -> Settings:
 # Identity for these local-first endpoints: a valid access token wins, else the
 # X-User-Id header (frontend bucket before sign-in), else a shared anonymous
 # bucket. See core.deps.optional_user_id.
-# Placeholder identity until Backend Phase 1 auth lands: budgets are keyed by an
-# X-User-Id header the frontend sends, falling back to a shared anonymous bucket.
-UserId = Annotated[str, Header(alias="X-User-Id")]
 Service = Annotated[AIService, Depends(get_service)]
 Chat = Annotated[ChatService, Depends(get_chat_service)]
 
@@ -66,8 +58,9 @@ def _sse(events: AsyncIterator[dict]) -> AsyncIterator[str]:
 
 
 def _check_budget(service: AIService, settings: Settings, user_id: str) -> None:
-    if not settings.anthropic_api_key:
-        raise HTTPException(status_code=503, detail="AI is not configured on this server.")
+    reason = settings.ai_unconfigured_reason
+    if reason:
+        raise HTTPException(status_code=503, detail=reason)
     try:
         service.budget.check(user_id)
     except BudgetExceededError as e:
@@ -83,13 +76,11 @@ def _stream(events: AsyncIterator[dict]) -> StreamingResponse:
 
 
 @router.post("/sql", operation_id="generateSql")
-@router.post("/sql")
 async def generate_sql(
     body: SqlGenerateRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Translate an English question into a validated DuckDB SQL proposal (SSE)."""
     _check_budget(service, settings, user_id)
@@ -97,13 +88,11 @@ async def generate_sql(
 
 
 @router.post("/sql/fix", operation_id="fixSql")
-@router.post("/sql/fix")
 async def fix_sql(
     body: SqlFixRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Repair a failing DuckDB query given its error message (SSE)."""
     _check_budget(service, settings, user_id)
@@ -111,13 +100,11 @@ async def fix_sql(
 
 
 @router.post("/sql/explain", operation_id="explainSql")
-@router.post("/sql/explain")
 async def explain_sql(
     body: SqlExplainRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Explain a SQL query in plain English (SSE)."""
     _check_budget(service, settings, user_id)
@@ -125,13 +112,11 @@ async def explain_sql(
 
 
 @router.post("/clean", operation_id="proposeCleaning")
-@router.post("/clean")
 async def suggest_cleaning(
     body: CleanRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Profile document in -> validated cleaning suggestions out (SSE).
 
@@ -143,13 +128,11 @@ async def suggest_cleaning(
 
 
 @router.post("/insights", operation_id="generateInsights")
-@router.post("/insights")
 async def suggest_insights(
     body: InsightsRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Profile document in -> ranked insights out (SSE).
 
@@ -161,13 +144,11 @@ async def suggest_insights(
 
 
 @router.post("/charts/suggest", operation_id="suggestCharts")
-@router.post("/charts/suggest")
 async def suggest_charts(
     body: ChartSuggestRequest,
     service: Service,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Profile document (+ optional question) -> 2-4 chart specs out (SSE)."""
     _check_budget(service, settings, user_id)
@@ -178,18 +159,17 @@ async def suggest_charts(
 
 
 def _require_configured(settings: Settings) -> None:
-    if not settings.anthropic_api_key:
-        raise HTTPException(status_code=503, detail="AI is not configured on this server.")
+    reason = settings.ai_unconfigured_reason
+    if reason:
+        raise HTTPException(status_code=503, detail=reason)
 
 
 @router.post("/chat", response_model=ChatCreateResponse, operation_id="createChatSession")
-@router.post("/chat", response_model=ChatCreateResponse)
 async def create_chat(
     body: ChatCreateRequest,
     chat: Chat,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> ChatCreateResponse:
     """Start an analyst chat session bound to the current dataset schemas."""
     _require_configured(settings)
@@ -198,14 +178,12 @@ async def create_chat(
 
 
 @router.post("/chat/{session_id}/message", operation_id="sendChatMessage")
-@router.post("/chat/{session_id}/message")
 async def chat_message(
     session_id: str,
     body: ChatMessageRequest,
     chat: Chat,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Send a user message; stream assistant text, tool calls, or completion (SSE).
 
@@ -226,14 +204,12 @@ async def chat_message(
 
 
 @router.post("/chat/{session_id}/tool-result", operation_id="submitChatToolResult")
-@router.post("/chat/{session_id}/tool-result")
 async def chat_tool_result(
     session_id: str,
     body: ChatToolResultRequest,
     chat: Chat,
     settings: Annotated[Settings, Depends(get_app_settings)],
     user_id: OptionalUserId,
-    user_id: UserId = "anonymous",
 ) -> StreamingResponse:
     """Return browser tool results to resume a paused turn (SSE)."""
     _require_configured(settings)

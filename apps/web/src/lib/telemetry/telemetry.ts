@@ -35,7 +35,22 @@ export type TelemetryEvent =
   | 'result.export'
   | 'workspace.export'
   | 'workspace.import'
-  | 'palette.open';
+  | 'palette.open'
+  // Cloud and AI. Counts only, exactly like the rest — no workspace name, no
+  // question text, no SQL. That these features talk to a server changes nothing
+  // about what this module is allowed to record.
+  | 'account.sign_in'
+  | 'account.sign_up'
+  | 'workspace.cloud_create'
+  | 'workspace.cloud_save'
+  | 'workspace.cloud_open'
+  | 'workspace.share'
+  | 'ai.sql'
+  | 'ai.sql.accept'
+  | 'ai.fix'
+  | 'ai.explain'
+  | 'ai.analyst.ask'
+  | 'ai.analyst.consent';
 
 export interface TelemetryState {
   enabled: boolean;

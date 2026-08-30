@@ -1,4 +1,4 @@
-"""NL->SQL service: streams Claude output, validates it, self-corrects once.
+"""NL->SQL service: streams Gemini output, validates it, self-corrects once.
 
 Event stream contract (each yielded dict becomes one SSE event):
   {"type": "delta", "text": ...}                 incremental model text
@@ -14,10 +14,10 @@ explicit user action.
 
 from collections.abc import AsyncIterator, Callable
 
-import anthropic
 from pydantic import BaseModel, ValidationError
 
 from ..core.config import Settings
+from . import llm
 from .budget import TokenBudget
 from .chartspec import validate_chart_spec
 from .parsing import parse_response
@@ -52,7 +52,7 @@ class AIService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.budget = TokenBudget(daily_limit=settings.ai_daily_token_budget)
-        self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key or None)
+        self.client = llm.build_client(settings.active_gemini_api_key)
 
     # -- public entry points -------------------------------------------------
 
@@ -95,7 +95,7 @@ class AIService:
                 else:  # usage
                     yield {"type": "explanation", "text": "".join(text_parts).strip()}
                     yield {"type": "done", "usage": event["usage"]}
-        except anthropic.APIError as e:
+        except llm.APIError as e:
             yield _api_error(e)
 
     # -- Phase 2: profiling-driven endpoints ----------------------------------
@@ -247,7 +247,7 @@ class AIService:
                 "corrected": corrected,
             }
             yield {"type": "done", "usage": usage}
-        except anthropic.APIError as e:
+        except llm.APIError as e:
             yield _api_error(e)
 
     async def _structured_pipeline(
@@ -309,7 +309,7 @@ class AIService:
                 "dropped": dropped,
             }
             yield {"type": "done", "usage": usage}
-        except anthropic.APIError as e:
+        except llm.APIError as e:
             yield _api_error(e)
 
     async def _repair(
@@ -322,38 +322,26 @@ class AIService:
         user_id: str,
     ) -> tuple[str | None, dict]:
         self.budget.check(user_id)
-        response = await self.client.messages.create(
+        response = await self.client.aio.models.generate_content(
             model=self.settings.ai_model,
-            max_tokens=self.settings.ai_structured_max_tokens,
-            thinking={"type": "adaptive"},
-            output_config=self._output_config(output_schema),
-            system=[
-                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            contents=[
+                llm.user_text(user_message),
+                llm.model_text(previous_json),
+                llm.user_text(
+                    REPAIR_TEMPLATE.format(errors="\n".join(f"- {e}" for e in errors))
+                ),
             ],
-            messages=[
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": previous_json},
-                {
-                    "role": "user",
-                    "content": REPAIR_TEMPLATE.format(
-                        errors="\n".join(f"- {e}" for e in errors)
-                    ),
-                },
-            ],
+            config=llm.generation_config(
+                system_instruction=system,
+                max_output_tokens=self.settings.ai_structured_max_tokens,
+                effort=self.settings.ai_effort,
+                output_schema=output_schema,
+            ),
         )
-        usage = {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-        }
+        usage = llm.usage_of(response)
         self.budget.record(user_id, usage["input_tokens"] + usage["output_tokens"])
-        text = "".join(block.text for block in response.content if block.type == "text")
+        text = llm.text_of(response)
         return (text or None), usage
-
-    def _output_config(self, output_schema: dict | None) -> dict:
-        config: dict = {"effort": self.settings.ai_effort}
-        if output_schema is not None:
-            config["format"] = {"type": "json_schema", "schema": output_schema}
-        return config
 
     async def _stream_model(
         self,
@@ -369,26 +357,29 @@ class AIService:
             if output_schema is not None
             else self.settings.ai_max_tokens
         )
-        async with self.client.messages.stream(
-            model=self.settings.ai_model,
-            max_tokens=max_tokens,
-            thinking={"type": "adaptive"},
-            output_config=self._output_config(output_schema),
-            # Static system prompt is the stable cacheable prefix; volatile
-            # schema + question live in the user message.
-            system=[
-                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
-            ],
-            messages=[{"role": "user", "content": user_message}],
-        ) as stream:
-            async for text in stream.text_stream:
-                yield {"type": "delta", "text": text}
-            final = await stream.get_final_message()
 
-        usage = {
-            "input_tokens": final.usage.input_tokens,
-            "output_tokens": final.usage.output_tokens,
-        }
+        # The whole response is accumulated so the final chunk's usage metadata
+        # can be read; Gemini reports usage per chunk, and only the last one is
+        # complete for the turn.
+        usage = {"input_tokens": 0, "output_tokens": 0}
+        stream = await self.client.aio.models.generate_content_stream(
+            model=self.settings.ai_model,
+            contents=[llm.user_text(user_message)],
+            config=llm.generation_config(
+                system_instruction=system,
+                max_output_tokens=max_tokens,
+                effort=self.settings.ai_effort,
+                output_schema=output_schema,
+            ),
+        )
+        async for chunk in stream:
+            text = llm.text_of(chunk)
+            if text:
+                yield {"type": "delta", "text": text}
+            chunk_usage = llm.usage_of(chunk)
+            if chunk_usage["input_tokens"] or chunk_usage["output_tokens"]:
+                usage = chunk_usage
+
         self.budget.record(user_id, usage["input_tokens"] + usage["output_tokens"])
         yield {"type": "usage", "usage": usage}
 
@@ -401,26 +392,22 @@ class AIService:
         user_id: str,
     ) -> tuple:
         self.budget.check(user_id)
-        response = await self.client.messages.create(
+        response = await self.client.aio.models.generate_content(
             model=self.settings.ai_model,
-            max_tokens=self.settings.ai_max_tokens,
-            thinking={"type": "adaptive"},
-            output_config={"effort": self.settings.ai_effort},
-            system=[
-                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            contents=[
+                llm.user_text(user_message),
+                llm.model_text(previous_answer),
+                llm.user_text(CORRECTION_TEMPLATE.format(error=error)),
             ],
-            messages=[
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": previous_answer},
-                {"role": "user", "content": CORRECTION_TEMPLATE.format(error=error)},
-            ],
+            config=llm.generation_config(
+                system_instruction=system,
+                max_output_tokens=self.settings.ai_max_tokens,
+                effort=self.settings.ai_effort,
+            ),
         )
-        usage = {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-        }
+        usage = llm.usage_of(response)
         self.budget.record(user_id, usage["input_tokens"] + usage["output_tokens"])
-        text = "".join(block.text for block in response.content if block.type == "text")
+        text = llm.text_of(response)
         return parse_response(text), usage
 
 
@@ -428,15 +415,5 @@ def _add_usage(a: dict, b: dict) -> dict:
     return {k: a.get(k, 0) + b.get(k, 0) for k in ("input_tokens", "output_tokens")}
 
 
-def _api_error(e: anthropic.APIError) -> dict:
-    if isinstance(e, anthropic.RateLimitError):
-        code = "upstream_rate_limited"
-        message = "The AI service is rate-limited; try again shortly."
-    elif isinstance(e, anthropic.AuthenticationError):
-        code, message = (
-            "not_configured",
-            "AI is not configured on this server (missing or invalid API key).",
-        )
-    else:
-        code, message = "upstream_error", "The AI service failed to respond."
-    return {"type": "error", "code": code, "message": message}
+def _api_error(e: Exception) -> dict:
+    return llm.error_event(e)

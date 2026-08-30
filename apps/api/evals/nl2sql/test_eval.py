@@ -2,7 +2,7 @@
 
 Run manually / nightly, never in per-PR CI:
 
-    ANTHROPIC_API_KEY=... uv run pytest evals -m eval -v
+    GEMINI_API_KEY=... uv run pytest evals -m eval -v
 
 Each case's generated SQL and expected SQL are executed against a DuckDB
 database built from the dataset's setup script; a case passes when the result
@@ -37,8 +37,8 @@ def rows(con, sql: str):
 
 @pytest.fixture(scope="module")
 def service():
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.skip("ANTHROPIC_API_KEY not set")
+    if not os.environ.get("GEMINI_API_KEY"):
+        pytest.skip("GEMINI_API_KEY not set")
     from app.ai.service import AIService
     from app.core.config import Settings
 

@@ -1,6 +1,6 @@
 """Live scenario + injection evals for the conversational analyst.
 
-    ANTHROPIC_API_KEY=... uv run pytest evals/chat -m eval -v
+    GEMINI_API_KEY=... uv run pytest evals/chat -m eval -v
 
 The harness plays the browser: it executes each tool call the agent makes
 against a DuckDB database, feeds results back, and loops until the turn
@@ -43,8 +43,8 @@ def _case_id(param):
 
 @pytest.fixture(scope="module")
 def service():
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.skip("ANTHROPIC_API_KEY not set")
+    if not os.environ.get("GEMINI_API_KEY"):
+        pytest.skip("GEMINI_API_KEY not set")
     from app.ai.budget import TokenBudget
     from app.ai.chat_service import ChatService
     from app.core.config import Settings

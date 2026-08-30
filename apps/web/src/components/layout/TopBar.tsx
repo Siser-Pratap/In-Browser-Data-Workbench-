@@ -9,6 +9,7 @@ import {
   Moon,
   PanelLeft,
   ShieldCheck,
+  Sparkles,
   Sun,
   Table2,
   Terminal,
@@ -16,8 +17,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { AccountMenu } from '@/components/auth/AccountMenu';
+import { WorkspaceSwitcher } from '@/components/cloud/WorkspaceSwitcher';
 import { PrivacySettings } from '@/components/layout/PrivacySettings';
 import { WorkbenchFileMenu } from '@/components/workbench/WorkbenchFileMenu';
+import { apiConfigured } from '@/lib/api/config';
 import { cn } from '@/lib/utils/cn';
 import { useCatalogStore } from '@/stores/catalog';
 import { useDatasetStore } from '@/stores/datasets';
@@ -36,6 +40,8 @@ export function TopBar() {
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   const toggleHistory = useUiStore((state) => state.toggleHistory);
   const historyOpen = useUiStore((state) => state.historyOpen);
+  const toggleAnalyst = useUiStore((state) => state.toggleAnalyst);
+  const analystOpen = useUiStore((state) => state.analystOpen);
   const view = useUiStore((state) => state.view);
   const setView = useUiStore((state) => state.setView);
   const setPaletteOpen = useUiStore((state) => state.setPaletteOpen);
@@ -118,10 +124,17 @@ export function TopBar() {
       )}
 
       <div className="ml-auto flex items-center gap-1">
-        {/* The privacy claim, stated where it's always visible. */}
+        {/* The privacy claim, stated where it's always visible.
+            Once an API is configured the unqualified "entirely" would be
+            overclaiming — queries still run locally, but sign-in and cloud save
+            do talk to a server. The narrower sentence is the one that stays
+            true, so it's the one shown. */}
         <span className="mr-2 hidden text-xs text-[var(--color-ink-muted)] xl:inline">
-          Runs entirely in your browser
+          {apiConfigured() ? 'Your data stays in your browser' : 'Runs entirely in your browser'}
         </span>
+
+        <WorkspaceSwitcher />
+        <AccountMenu />
 
         <WorkbenchFileMenu />
 
@@ -138,6 +151,25 @@ export function TopBar() {
           <Command className="size-3.5" aria-hidden />
           <span className="hidden sm:inline">⌘K</span>
         </button>
+
+        {apiConfigured() && (
+          <button
+            type="button"
+            onClick={toggleAnalyst}
+            aria-pressed={analystOpen}
+            className={cn(
+              'flex items-center gap-1.5 rounded px-2 py-1.5 text-xs hover:bg-[var(--color-surface-raised)]',
+              analystOpen
+                ? 'text-[var(--color-accent)]'
+                : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
+            )}
+            aria-label="Toggle the AI analyst"
+            title="Ask a question in English; the analyst writes and runs the SQL"
+          >
+            <Sparkles className="size-3.5" />
+            <span className="hidden lg:inline">Analyst</span>
+          </button>
+        )}
 
         <button
           type="button"

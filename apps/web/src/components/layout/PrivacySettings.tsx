@@ -6,6 +6,13 @@ import { ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import {
+  getAnalystConsent,
+  getAnalystConsentServerSnapshot,
+  setAnalystConsent,
+  subscribeAnalystConsent,
+} from '@/lib/ai/consent';
+import { apiConfigured } from '@/lib/api/config';
+import {
   getTelemetrySnapshot,
   getTelemetryServerSnapshot,
   setTelemetryEnabled,
@@ -29,6 +36,11 @@ export function PrivacySettings({ onClose }: { onClose: () => void }) {
     getTelemetrySnapshot,
     getTelemetryServerSnapshot,
   );
+  const analystConsent = useSyncExternalStore(
+    subscribeAnalystConsent,
+    getAnalystConsent,
+    getAnalystConsentServerSnapshot,
+  );
   const replayTour = useUiStore((state) => state.replayTour);
 
   const entries = Object.entries(telemetry.counts).sort((a, b) => b[1] - a[1]);
@@ -40,14 +52,42 @@ export function PrivacySettings({ onClose }: { onClose: () => void }) {
       footer={<Button variant="primary" onClick={onClose}>Done</Button>}
     >
       <div className="space-y-4 text-sm">
+        {/* The unqualified "no network requests after load" claim only holds
+            for a build with no API. Once there is one, sign-in and cloud save
+            do talk to a server — so the honest sentence differs, and the part
+            that never changes (your files are not uploaded) leads either way. */}
         <p className="flex items-start gap-2 rounded border border-[var(--color-ok)]/40 bg-[var(--color-ok)]/10 p-2 text-xs">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[var(--color-ok)]" />
           <span>
-            Your files are read by a WebAssembly SQL engine inside this tab. They are never
-            uploaded, and the app makes no network requests after it loads — you can verify that
-            in your browser&rsquo;s network panel.
+            Your files are read by a WebAssembly SQL engine inside this tab and are never
+            uploaded.{' '}
+            {apiConfigured()
+              ? 'Importing, querying, charting and dashboards make no network requests at all. Signing in, saving to the cloud and the AI features do — and each says what it sends.'
+              : 'The app makes no network requests after it loads — you can verify that in your browser’s network panel.'}
           </span>
         </p>
+
+        {apiConfigured() && (
+          <div>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={analystConsent}
+                onChange={(event) => setAnalystConsent(event.target.checked)}
+              />
+              <span>
+                <span className="font-medium">Let the AI analyst see my query results</span>
+                <span className="mt-0.5 block text-xs text-[var(--color-ink-muted)]">
+                  The analyst answers questions by running SQL here and reading the results back,
+                  so up to 50 rows per query — including actual values — are sent to the AI. Every
+                  other AI feature sends only table and column names. Turning this off stops the
+                  analyst; nothing else changes.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <div>
           <label className="flex items-start gap-2">

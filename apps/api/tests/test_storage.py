@@ -50,7 +50,7 @@ class FakeS3:
 @pytest.fixture
 def app_settings() -> Settings:
     return Settings(
-        anthropic_api_key="test-key",
+        gemini_api_key="test-key",
         database_url=database_url(),
         db_auto_create=True,
         cookie_secure=False,

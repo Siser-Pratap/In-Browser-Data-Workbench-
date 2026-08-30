@@ -15,8 +15,13 @@ import { FirstRunTour } from '@/components/onboarding/FirstRunTour';
 import { SampleDataButton } from '@/components/onboarding/SampleDataButton';
 import { CommandPalette } from '@/components/palette/CommandPalette';
 import { useCommands } from '@/components/palette/useCommands';
-import { LazyDashboardsView, LazySqlWorkbench } from '@/components/workbench/lazy';
+import {
+  LazyAnalystPanel,
+  LazyDashboardsView,
+  LazySqlWorkbench,
+} from '@/components/workbench/lazy';
 import { EmptySqlState } from '@/components/workbench/SqlWorkbench';
+import { apiConfigured } from '@/lib/api/config';
 import type { ImportOptions } from '@/lib/engine/types';
 import { track } from '@/lib/telemetry/telemetry';
 import { formatCount } from '@/lib/utils/format';
@@ -41,6 +46,8 @@ export default function WorkbenchPage() {
   const setView = useUiStore((state) => state.setView);
   const historyOpen = useUiStore((state) => state.historyOpen);
   const toggleHistory = useUiStore((state) => state.toggleHistory);
+  const analystOpen = useUiStore((state) => state.analystOpen);
+  const toggleAnalyst = useUiStore((state) => state.toggleAnalyst);
   const paletteOpen = useUiStore((state) => state.paletteOpen);
   const setPaletteOpen = useUiStore((state) => state.setPaletteOpen);
 
@@ -170,6 +177,14 @@ export default function WorkbenchPage() {
         </main>
 
         {historyOpen && <HistoryPanel onClose={toggleHistory} />}
+
+        {/* Rendered beside the workbench rather than over it: the agent's
+            queries are worth reading against the data they came from. */}
+        {analystOpen && apiConfigured() && (
+          <ErrorBoundary>
+            <LazyAnalystPanel onClose={toggleAnalyst} />
+          </ErrorBoundary>
+        )}
       </div>
 
       <StatusBar visibleRows={stats?.visibleRows} elapsedMs={stats?.elapsedMs} />

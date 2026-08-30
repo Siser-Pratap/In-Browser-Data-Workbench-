@@ -1,0 +1,203 @@
+# The whole stack, for development.
+#
+#   docker compose up
+#
+# brings up the frontend, the backend (which serves the AI endpoints), the
+# background worker, and the three backing services they need. Both apps hot-
+# reload from your working tree — the source is bind-mounted, not baked in.
+#
+# There is no separate "ai" service on purpose. The AI layer is a router inside
+# the FastAPI app (apps/api/src/app/ai/), which is deliberate: the Gemini key
+# stays server-side and never reaches the browser. Starting the API *is*
+# starting AI development — set GEMINI_API_KEY_DEV in .env and the /ai endpoints
+# come up with it.
+#
+# Ports: web 3000, api 8000, postgres 5432, redis 6380 (6379 inside the
+# network), minio 9000 (console 9001). apps/api/docker-compose.yml is a
+# backend-only stack that binds the same ports — run one or the other, not both.
+
+name: workbench
+
+services:
+  # --- backing services ----------------------------------------------------
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: workbench
+      POSTGRES_PASSWORD: workbench
+      POSTGRES_DB: workbench
+    ports:
+      - '5432:5432'
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U workbench']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      # Published on 6380 because a locally-installed redis-server commonly
+      # holds 6379, and that clash stops the whole stack coming up. Nothing in
+      # the stack uses this mapping — api and worker reach Redis at
+      # `redis:6379` over the compose network. It exists only so you can point
+      # `redis-cli -p 6380` at the container from the host.
+      - '${REDIS_HOST_PORT:-6380}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: workbench
+      MINIO_ROOT_PASSWORD: workbench-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+
+  # Creates the bucket the API expects. Without it S3_BUCKET names a bucket
+  # that doesn't exist and the upload endpoints fail at first use rather than at
+  # startup. Retries instead of gating on a healthcheck so a slow MinIO start
+  # doesn't look like a broken `compose up`.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint:
+      - sh
+      - -c
+      - |
+        for i in $$(seq 1 30); do
+          if mc alias set local http://minio:9000 workbench workbench-secret >/dev/null 2>&1; then
+            mc mb --ignore-existing "local/$${S3_BUCKET}"
+            echo "bucket $${S3_BUCKET} ready"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "minio did not become reachable; storage endpoints will return 503"
+        exit 0
+    environment:
+      S3_BUCKET: ${S3_BUCKET:-workbench-dev}
+    restart: 'no'
+
+  # --- backend + AI --------------------------------------------------------
+
+  api:
+    build:
+      context: ./apps/api
+      target: dev
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://workbench:workbench@db:5432/workbench
+      REDIS_URL: redis://redis:6379/0
+      # Fixed rather than generated, so a reload doesn't invalidate the tokens
+      # you're already logged in with. Dev only — production sets a real secret.
+      JWT_SECRET: dev-only-change-me
+      COOKIE_SECURE: 'false'
+      CORS_ORIGINS: http://localhost:3000
+      FRONTEND_BASE_URL: http://localhost:3000
+      OAUTH_REDIRECT_BASE: http://localhost:8000
+      # This stack is development, so the API spends GEMINI_API_KEY_DEV and
+      # never GEMINI_API_KEY — see Settings.active_gemini_api_key. Both are
+      # passed through so the same .env works for a production deploy too.
+      ENVIRONMENT: development
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEY_DEV: ${GEMINI_API_KEY_DEV:-}
+      AI_MODEL: ${AI_MODEL:-gemini-flash-latest}
+      AI_DAILY_TOKEN_BUDGET: ${AI_DAILY_TOKEN_BUDGET:-200000}
+      S3_BUCKET: ${S3_BUCKET:-workbench-dev}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: workbench
+      S3_SECRET_KEY: workbench-secret
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      # Bind-mounted source doesn't propagate inotify events on Docker Desktop,
+      # so the reloader has to poll. Costs a little CPU; without it nothing
+      # reloads on macOS or Windows and you'd think hot reload was broken.
+      WATCHFILES_FORCE_POLLING: 'true'
+    volumes:
+      - ./apps/api:/app
+    ports:
+      - '8000:8000'
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --app-dir src --host 0.0.0.0 --port 8000 --reload"
+
+  # Background jobs: server-side compute, exports, cleanup. The API works
+  # without it — an unreachable worker degrades to running jobs in-process,
+  # which /readyz reports as `inline_fallback`.
+  worker:
+    build:
+      context: ./apps/api
+      target: dev
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://workbench:workbench@db:5432/workbench
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: dev-only-change-me
+      ENVIRONMENT: development
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEY_DEV: ${GEMINI_API_KEY_DEV:-}
+      AI_MODEL: ${AI_MODEL:-gemini-flash-latest}
+      S3_BUCKET: ${S3_BUCKET:-workbench-dev}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: workbench
+      S3_SECRET_KEY: workbench-secret
+    volumes:
+      - ./apps/api:/app
+    command: arq app.workers.worker.WorkerSettings
+
+  # --- frontend ------------------------------------------------------------
+
+  web:
+    build:
+      context: ./apps/web
+      target: dev
+    # Deliberately not gated on the API. The workbench is local-first and fully
+    # usable with no backend at all — making the frontend wait would contradict
+    # the thing the product is built around, and would slow every `up`.
+    environment:
+      # Read by the browser, so it must be the host's address for the API, not
+      # the compose network name — `http://api:8000` only resolves inside the
+      # container network.
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      # Same bind-mount inotify problem as the API; webpack needs to poll too.
+      WATCHPACK_POLLING: 'true'
+      CHOKIDAR_USEPOLLING: 'true'
+    volumes:
+      - ./apps/web:/app
+      # These two shadow the host's copies. node_modules is platform-specific
+      # (Next ships a native SWC binary) and .next would be written by two
+      # different toolchains at once.
+      - web_node_modules:/app/node_modules
+      - web_next:/app/.next
+      - pnpm_store:/pnpm/store
+    ports:
+      - '3000:3000'
+
+volumes:
+  db_data:
+  minio_data:
+  web_node_modules:
+  web_next:
+  pnpm_store:
