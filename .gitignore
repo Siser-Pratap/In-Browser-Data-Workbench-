@@ -1,0 +1,116 @@
+# =========================
+# Dependencies
+# =========================
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+bun.lockb
+
+# =========================
+# Build / Production
+# =========================
+.next/
+out/
+dist/
+build/
+coverage/
+.vercel/
+.turbo/
+
+# =========================
+# Environment Variables / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# API Keys / Credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Cloud / DevOps secrets
+.aws/
+.gcp/
+.azure/
+firebase-service-account*.json
+service-account*.json
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# OS Generated Files
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+.venv/
+venv/
+env/
+
+# =========================
+# Testing
+# =========================
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# =========================
+# Cache Files
+# =========================
+.cache/
+.eslintcache
+.parcel-cache/
+*.tsbuildinfo
+
+# =========================
+# Docker
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Temporary Files
+# =========================
+tmp/
+temp/
+*.tmp
+
+# =========================
+# Misc
+# =========================
+*.bak
+*.backup
+
+package-lock.json
