@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Environment files — real secrets live in these, never commit them
+.env
+.env.local
+.env.development
+.env.*.local
+.env.example
+.env.*.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Generated OpenAPI spec (npm run docs:generate -w apps/server)
+openapi.json
+
+# Tool caches
+.eslintcache
+.vite/
+coverage/
+*.png
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+*.pack
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,151 @@
+{
+  "../node_modules/.pnpm/jspdf@4.2.1/node_modules/jspdf/dist/jspdf.es.min.js -> canvg": {
+    "id": 98200,
+    "files": [
+      "static/chunks/badf541d.de6b70ee33b60b36.js",
+      "static/chunks/9964.20b02755f4706344.js"
+    ]
+  },
+  "../node_modules/.pnpm/jspdf@4.2.1/node_modules/jspdf/dist/jspdf.es.min.js -> dompurify": {
+    "id": 75912,
+    "files": [
+      "static/chunks/5912.206649163d1a886c.js"
+    ]
+  },
+  "../node_modules/.pnpm/jspdf@4.2.1/node_modules/jspdf/dist/jspdf.es.min.js -> html2canvas": {
+    "id": 32129,
+    "files": [
+      "static/chunks/c132bf7d.09a9486c4257bf02.js"
+    ]
+  },
+  "../node_modules/.pnpm/monaco-editor@0.56.0/node_modules/monaco-editor/esm/vs/languages/definitions/sql/register.js -> ./sql.js": {
+    "id": 43116,
+    "files": [
+      "static/chunks/3116.5af547e49d81e908.js"
+    ]
+  },
+  "components/dashboards/DashboardView.tsx -> @/lib/charts/compile": {
+    "id": 94719,
+    "files": []
+  },
+  "components/dashboards/DashboardView.tsx -> @/lib/engine/engine": {
+    "id": 73745,
+    "files": []
+  },
+  "components/workbench/lazy.tsx -> @/components/ai/AnalystPanel": {
+    "id": 2132,
+    "files": [
+      "static/chunks/2132.c577c8b6671bb98d.js"
+    ]
+  },
+  "components/workbench/lazy.tsx -> @/components/ai/AskAiDialog": {
+    "id": 61198,
+    "files": [
+      "static/chunks/1198.de3aad06f62a9abe.js"
+    ]
+  },
+  "components/workbench/lazy.tsx -> @/components/charts/ChartBuilder": {
+    "id": 21496,
+    "files": [
+      "static/chunks/1496.4e78449207fb3c1e.js"
+    ]
+  },
+  "components/workbench/lazy.tsx -> @/components/dashboards/DashboardView": {
+    "id": 34681,
+    "files": [
+      "static/css/e28daa316af4e285.css",
+      "static/chunks/6744.a2b8028eb9885430.js",
+      "static/chunks/1496.4e78449207fb3c1e.js",
+      "static/chunks/4681.f1071cefa5ed98b1.js"
+    ]
+  },
+  "components/workbench/lazy.tsx -> @/components/transform/ColumnOpsDialog": {
+    "id": 46780,
+    "files": [
+      "static/chunks/6780.fffbe980fbccf034.js"
+    ]
+  },
+  "components/workbench/lazy.tsx -> @/components/transform/TransformDialog": {
+    "id": 82458,
+    "files": [
+      "static/chunks/2458.1fdfe6f15ca14096.js"
+    ]
+  },
+  "components/workbench/lazy.tsx -> @/components/workbench/SqlWorkbench": {
+    "id": 1045,
+    "files": []
+  },
+  "lib/charts/echarts-loader.ts -> echarts/charts": {
+    "id": 88128,
+    "files": [
+      "static/chunks/5812.ab8364188520deb0.js",
+      "static/chunks/6.45532a34e2032527.js",
+      "static/chunks/2193.f474de577f201f0d.js",
+      "static/chunks/8835.95dc367598f4cbc4.js",
+      "static/chunks/361.26d969f0938a746c.js",
+      "static/chunks/8128.c83d98573c84126a.js"
+    ]
+  },
+  "lib/charts/echarts-loader.ts -> echarts/components": {
+    "id": 66685,
+    "files": [
+      "static/chunks/5812.ab8364188520deb0.js",
+      "static/chunks/6.45532a34e2032527.js",
+      "static/chunks/2193.f474de577f201f0d.js",
+      "static/chunks/8835.95dc367598f4cbc4.js",
+      "static/chunks/6685.ac87a344878717a9.js"
+    ]
+  },
+  "lib/charts/echarts-loader.ts -> echarts/core": {
+    "id": 14366,
+    "files": [
+      "static/chunks/5812.ab8364188520deb0.js",
+      "static/chunks/6.45532a34e2032527.js",
+      "static/chunks/2193.f474de577f201f0d.js",
+      "static/chunks/361.26d969f0938a746c.js",
+      "static/chunks/4366.a306b67d6a15d6b0.js"
+    ]
+  },
+  "lib/charts/echarts-loader.ts -> echarts/renderers": {
+    "id": 2062,
+    "files": [
+      "static/chunks/5812.ab8364188520deb0.js",
+      "static/chunks/6.45532a34e2032527.js",
+      "static/chunks/2062.3939d58d909d4f76.js"
+    ]
+  },
+  "lib/editor/monaco.ts -> ./monaco-sql": {
+    "id": 65816,
+    "files": [
+      "static/css/61a4c328346915cf.css",
+      "static/css/9155d95cff4e89ca.css",
+      "static/css/2865d69d3dc2e13b.css",
+      "static/chunks/4db6c291.520aa7fe193b9bc0.js",
+      "static/chunks/5812.ab8364188520deb0.js",
+      "static/chunks/603.a338ac8186c7330b.js",
+      "static/chunks/8822.45814f79ef761f81.js",
+      "static/chunks/5816.7e2d160e03985b81.js"
+    ]
+  },
+  "lib/engine/engine.ts -> @duckdb/duckdb-wasm": {
+    "id": 46694,
+    "files": [
+      "static/chunks/6694.d82ee407b845a954.js"
+    ]
+  },
+  "lib/export/dashboard.ts -> jspdf": {
+    "id": 53998,
+    "files": [
+      "static/chunks/67ab562c.7ef50aba5ecbd53f.js",
+      "static/chunks/9e784b99.a31a8361586f6bf4.js",
+      "static/chunks/8914.fe0fda3a11b714dd.js"
+    ]
+  },
+  "lib/files/xlsx.ts -> xlsx": {
+    "id": 2289,
+    "files": [
+      "static/chunks/147b5626.996cdd72ddf60c59.js",
+      "static/chunks/3914.74e0c4d80077805f.js"
+    ]
+  }
+}
