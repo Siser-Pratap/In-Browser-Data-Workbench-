@@ -1,0 +1,202 @@
+customer_id,name,country,segment,signed_up
+1,Barbara Dijkstra,Poland,Mid-market,2024-03-09
+2,Katherine Torvalds,Spain,Enterprise,2023-02-13
+3,Tim Torvalds,Poland,Enterprise,2024-07-24
+4,Barbara Liskov,Poland,Enterprise,2022-11-19
+5,Ada Turing,Spain,Enterprise,2022-07-21
+6,Linus Berners-Lee,Netherlands,Mid-market,2023-01-16
+7,Ada Liskov,Poland,Enterprise,2023-05-11
+8,Katherine Johnson,Spain,Enterprise,2023-05-25
+9,Linus Lovelace,Netherlands,SMB,2024-01-26
+10,Edsger Dijkstra,Poland,Enterprise,2023-02-13
+11,Alan Johnson,Poland,SMB,2024-05-05
+12,Grace Hamilton,Netherlands,Mid-market,2022-07-30
+13,Edsger Torvalds,Spain,Mid-market,2024-08-23
+14,Ada Dijkstra,Spain,Mid-market,2023-02-22
+15,Alan Hamilton,Germany,SMB,2023-07-15
+16,Linus Berners-Lee,France,SMB,2023-10-24
+17,Alan Liskov,France,Enterprise,2024-05-24
+18,Radia Turing,France,Enterprise,2023-08-12
+19,Ada Hamilton,Spain,Mid-market,2022-08-27
+20,Margaret Berners-Lee,Germany,SMB,2024-01-09
+21,Linus Berners-Lee,United Kingdom,SMB,2023-08-06
+22,Alan Berners-Lee,Netherlands,Mid-market,2024-10-25
+23,Radia Hamilton,United Kingdom,SMB,2024-01-22
+24,Edsger Liskov,Germany,SMB,2023-09-08
+25,Katherine Perlman,Germany,Enterprise,2022-07-10
+26,Alan Lovelace,France,Enterprise,2024-09-13
+27,Tim Perlman,France,SMB,2023-11-20
+28,Edsger Berners-Lee,France,Mid-market,2023-08-23
+29,Ada Turing,Poland,Enterprise,2023-01-11
+30,Katherine Dijkstra,United Kingdom,Enterprise,2024-02-29
+31,Ada Perlman,Netherlands,Enterprise,2023-11-30
+32,Linus Dijkstra,Netherlands,Enterprise,2024-01-17
+33,Tim Berners-Lee,Poland,Enterprise,2022-09-09
+34,Tim Hamilton,Germany,Mid-market,2022-10-27
+35,Edsger Dijkstra,Poland,Enterprise,2023-02-25
+36,Alan Torvalds,France,SMB,2024-02-03
+37,Linus Torvalds,Netherlands,Enterprise,2024-04-28
+38,Grace Hopper,Germany,Enterprise,2023-05-29
+39,Katherine Liskov,France,SMB,2024-09-25
+40,Alan Liskov,Germany,SMB,2024-04-23
+41,Ada Hopper,France,SMB,2022-09-24
+42,Edsger Lovelace,France,SMB,2024-03-09
+43,Tim Turing,Spain,SMB,2024-09-19
+44,Radia Turing,Poland,Enterprise,2022-12-05
+45,Ada Turing,France,SMB,2022-08-15
+46,Tim Hopper,Spain,Mid-market,2022-09-06
+47,Tim Hopper,France,SMB,2023-11-09
+48,Tim Dijkstra,Germany,Enterprise,2024-09-16
+49,Katherine Lovelace,France,Mid-market,2023-11-30
+50,Tim Liskov,Netherlands,Enterprise,2024-07-08
+51,Radia Turing,Germany,SMB,2023-02-05
+52,Tim Dijkstra,France,Enterprise,2024-05-10
+53,Barbara Liskov,France,Enterprise,2023-12-16
+54,Linus Torvalds,Spain,SMB,2023-01-15
+55,Katherine Turing,France,Mid-market,2022-09-04
+56,Radia Liskov,France,SMB,2022-08-22
+57,Linus Lovelace,United Kingdom,Enterprise,2022-08-21
+58,Ada Turing,United Kingdom,SMB,2024-10-05
+59,Katherine Berners-Lee,Poland,Enterprise,2024-08-01
+60,Grace Liskov,United Kingdom,Enterprise,2024-02-17
+61,Grace Turing,France,Mid-market,2022-07-27
+62,Ada Turing,Poland,Enterprise,2024-02-12
+63,Margaret Torvalds,Poland,SMB,2023-12-02
+64,Radia Berners-Lee,Spain,Enterprise,2023-12-30
+65,Katherine Turing,United Kingdom,Enterprise,2023-03-17
+66,Edsger Hopper,United Kingdom,SMB,2023-02-09
+67,Radia Berners-Lee,Germany,Mid-market,2024-07-26
+68,Edsger Torvalds,Germany,SMB,2023-01-22
+69,Radia Hamilton,Netherlands,Enterprise,2023-03-03
+70,Ada Hopper,Poland,Enterprise,2024-04-08
+71,Barbara Liskov,Spain,Mid-market,2023-08-04
+72,Tim Johnson,Netherlands,Enterprise,2023-02-07
+73,Barbara Dijkstra,Poland,Mid-market,2023-12-09
+74,Grace Johnson,Germany,Mid-market,2023-01-12
+75,Linus Torvalds,France,Enterprise,2022-09-27
+76,Katherine Hopper,Spain,Mid-market,2024-10-18
+77,Margaret Dijkstra,Netherlands,Enterprise,2024-02-05
+78,Barbara Berners-Lee,France,SMB,2024-04-11
+79,Ada Hopper,United Kingdom,Enterprise,2024-04-20
+80,Katherine Turing,Poland,Mid-market,2022-11-10
+81,Linus Hamilton,United Kingdom,Enterprise,2024-05-12
+82,Barbara Hamilton,Netherlands,Mid-market,2023-06-06
+83,Margaret Perlman,Netherlands,Enterprise,2024-10-08
+84,Margaret Hamilton,Netherlands,Enterprise,2024-05-13
+85,Linus Turing,United Kingdom,Mid-market,2022-09-26
+86,Edsger Lovelace,France,Enterprise,2024-04-23
+87,Linus Lovelace,United Kingdom,Mid-market,2022-09-30
+88,Alan Berners-Lee,Germany,SMB,2023-05-19
+89,Linus Hamilton,Spain,Mid-market,2023-08-16
+90,Radia Hamilton,Poland,Mid-market,2023-07-14
+91,Edsger Lovelace,France,Mid-market,2024-10-23
+92,Ada Torvalds,Netherlands,Enterprise,2024-01-20
+93,Barbara Torvalds,Germany,Enterprise,2022-09-26
+94,Ada Berners-Lee,Netherlands,Enterprise,2024-04-03
+95,Alan Berners-Lee,France,Enterprise,2022-10-12
+96,Barbara Perlman,France,Mid-market,2022-12-13
+97,Radia Hamilton,United Kingdom,Mid-market,2024-01-22
+98,Ada Torvalds,Netherlands,Mid-market,2024-04-28
+99,Barbara Dijkstra,Poland,SMB,2023-06-08
+100,Barbara Turing,France,Mid-market,2024-08-01
+101,Barbara Liskov,Spain,SMB,2024-01-10
+102,Grace Hamilton,Netherlands,SMB,2023-10-02
+103,Ada Turing,Netherlands,Enterprise,2024-01-07
+104,Radia Berners-Lee,Netherlands,Mid-market,2024-06-06
+105,Barbara Hopper,Germany,Enterprise,2024-08-06
+106,Edsger Johnson,United Kingdom,SMB,2023-08-06
+107,Alan Turing,Netherlands,SMB,2024-10-08
+108,Linus Liskov,United Kingdom,Mid-market,2023-04-14
+109,Margaret Berners-Lee,Poland,SMB,2023-10-18
+110,Grace Lovelace,United Kingdom,Mid-market,2023-10-22
+111,Edsger Hamilton,Netherlands,Mid-market,2024-09-29
+112,Margaret Lovelace,Germany,Mid-market,2023-06-05
+113,Edsger Liskov,Netherlands,Mid-market,2024-07-01
+114,Tim Johnson,Germany,SMB,2023-08-08
+115,Edsger Hamilton,United Kingdom,Enterprise,2024-04-25
+116,Alan Turing,United Kingdom,SMB,2023-03-12
+117,Ada Torvalds,United Kingdom,Mid-market,2024-07-03
+118,Edsger Lovelace,Spain,SMB,2024-10-19
+119,Edsger Hopper,Spain,Mid-market,2023-11-26
+120,Linus Dijkstra,United Kingdom,Enterprise,2023-09-23
+121,Ada Perlman,United Kingdom,SMB,2022-08-08
+122,Grace Lovelace,Poland,SMB,2023-03-03
+123,Tim Hamilton,Germany,Enterprise,2023-07-20
+124,Alan Hopper,Netherlands,SMB,2024-03-22
+125,Grace Turing,Poland,Enterprise,2024-04-02
+126,Barbara Berners-Lee,Spain,SMB,2024-10-08
+127,Margaret Torvalds,Spain,SMB,2024-06-06
+128,Grace Perlman,Netherlands,Enterprise,2022-09-12
+129,Margaret Torvalds,France,Mid-market,2024-06-17
+130,Alan Liskov,Poland,SMB,2024-04-14
+131,Grace Hamilton,Netherlands,SMB,2024-10-14
+132,Katherine Johnson,Spain,SMB,2023-11-13
+133,Tim Johnson,Poland,SMB,2024-10-26
+134,Edsger Perlman,United Kingdom,Enterprise,2024-04-08
+135,Edsger Turing,France,Mid-market,2023-06-08
+136,Grace Hopper,United Kingdom,Mid-market,2023-12-24
+137,Barbara Turing,United Kingdom,Enterprise,2023-05-23
+138,Edsger Hopper,Netherlands,SMB,2023-06-03
+139,Radia Hopper,Germany,Mid-market,2023-08-01
+140,Alan Turing,Spain,SMB,2024-10-15
+141,Linus Hopper,Netherlands,Mid-market,2023-12-25
+142,Katherine Liskov,Spain,SMB,2024-04-14
+143,Radia Hamilton,Poland,Mid-market,2024-03-03
+144,Edsger Perlman,Poland,Mid-market,2023-05-11
+145,Katherine Hamilton,France,SMB,2023-09-03
+146,Linus Lovelace,United Kingdom,Mid-market,2024-05-21
+147,Grace Johnson,Netherlands,Enterprise,2023-08-16
+148,Ada Hamilton,United Kingdom,SMB,2023-06-06
+149,Barbara Johnson,Poland,Enterprise,2022-12-02
+150,Katherine Liskov,Poland,SMB,2023-08-19
+151,Barbara Dijkstra,Poland,SMB,2023-03-04
+152,Ada Perlman,United Kingdom,Enterprise,2024-02-26
+153,Grace Turing,Germany,Mid-market,2024-05-25
+154,Ada Torvalds,France,SMB,2023-12-12
+155,Alan Turing,Germany,SMB,2024-01-18
+156,Ada Liskov,United Kingdom,SMB,2023-11-27
+157,Grace Hamilton,Netherlands,SMB,2023-07-01
+158,Katherine Torvalds,Germany,Enterprise,2022-08-18
+159,Barbara Perlman,Germany,SMB,2024-06-19
+160,Ada Hopper,France,Enterprise,2023-12-14
+161,Edsger Turing,Spain,SMB,2023-07-13
+162,Margaret Liskov,Netherlands,SMB,2022-11-18
+163,Tim Dijkstra,Spain,SMB,2024-08-22
+164,Alan Liskov,Spain,Mid-market,2022-12-24
+165,Ada Berners-Lee,Netherlands,SMB,2024-01-26
+166,Grace Johnson,France,Enterprise,2022-08-15
+167,Grace Torvalds,Spain,Mid-market,2023-04-19
+168,Tim Perlman,Netherlands,Mid-market,2022-07-16
+169,Margaret Dijkstra,United Kingdom,SMB,2022-09-01
+170,Margaret Johnson,Germany,Enterprise,2022-07-12
+171,Tim Dijkstra,Netherlands,Enterprise,2024-08-13
+172,Ada Torvalds,Spain,Mid-market,2022-11-12
+173,Linus Liskov,Poland,Enterprise,2022-12-11
+174,Radia Lovelace,Spain,Enterprise,2022-10-06
+175,Grace Johnson,United Kingdom,SMB,2024-09-22
+176,Ada Torvalds,Poland,Mid-market,2024-07-25
+177,Tim Turing,United Kingdom,SMB,2022-09-24
+178,Linus Turing,Spain,Mid-market,2023-09-27
+179,Edsger Perlman,Spain,Mid-market,2024-08-14
+180,Radia Lovelace,United Kingdom,Enterprise,2024-07-23
+181,Ada Turing,Spain,Mid-market,2024-03-04
+182,Tim Hopper,Netherlands,Mid-market,2024-03-22
+183,Linus Hopper,Poland,SMB,2023-06-02
+184,Katherine Hamilton,Germany,SMB,2022-11-11
+185,Linus Dijkstra,United Kingdom,Enterprise,2024-04-29
+186,Alan Dijkstra,Germany,Mid-market,2023-07-13
+187,Tim Dijkstra,France,Mid-market,2023-08-20
+188,Margaret Hamilton,Spain,Mid-market,2023-06-26
+189,Alan Torvalds,France,Mid-market,2024-02-12
+190,Grace Hamilton,Poland,SMB,2023-10-10
+191,Linus Hamilton,Poland,Enterprise,2023-02-02
+192,Grace Johnson,Netherlands,Mid-market,2024-07-14
+193,Linus Lovelace,France,Enterprise,2023-07-20
+194,Linus Hopper,Germany,Enterprise,2023-11-10
+195,Ada Liskov,Netherlands,Enterprise,2024-02-20
+196,Grace Hamilton,France,Mid-market,2023-11-13
+197,Tim Lovelace,Germany,SMB,2024-04-23
+198,Tim Lovelace,Germany,Mid-market,2022-10-26
+199,Tim Torvalds,United Kingdom,Mid-market,2023-11-16
+200,Alan Turing,Spain,Enterprise,2023-12-07
+42,Ada Lovelace,United Kingdom,Enterprise,2023-11-02
